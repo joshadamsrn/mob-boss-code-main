@@ -1,0 +1,84 @@
+{% load render_bundle from webpack_loader %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mob Boss | Login</title>
+    <meta name="description" content="Login or register for Mob Boss.">
+    {% render_bundle 'web' 'css' %}
+</head>
+<body>
+<main class="container py-3 py-md-4">
+    <div class="auth-wrap mx-auto">
+        <div class="card auth-card">
+            <div class="card-body p-3 p-md-4">
+                <h1 class="h5 mb-1">Mob Boss</h1>
+                <p class="text-secondary mb-3">Sign in.</p>
+
+                <h2 class="h6 mb-2">Login</h2>
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="login">
+                    {% for field in login_form %}
+                        <div class="mb-2">
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.errors %}
+                                <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                    {% if login_form.non_field_errors %}
+                        <div class="alert alert-danger py-2">
+                            {{ login_form.non_field_errors|join:", " }}
+                        </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-dark w-100">Login</button>
+                </form>
+
+                <hr class="my-3">
+                <p class="text-secondary mb-2 small">New user?</p>
+                <button
+                    class="btn btn-outline-dark w-100"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#registerPanel"
+                    aria-expanded="{% if signup_form.errors %}true{% else %}false{% endif %}"
+                    aria-controls="registerPanel"
+                >
+                    Create Account
+                </button>
+
+                <div class="collapse {% if signup_form.errors %}show{% endif %} mt-2" id="registerPanel">
+                    <div class="card card-body bg-light">
+                        <h3 class="h6 mb-2">Register</h3>
+                        <form method="post" novalidate>
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="signup">
+                            {% for field in signup_form %}
+                                <div class="mb-2">
+                                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {% if field.errors %}
+                                        <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                            {% if signup_form.non_field_errors %}
+                                <div class="alert alert-danger py-2">
+                                    {{ signup_form.non_field_errors|join:", " }}
+                                </div>
+                            {% endif %}
+                            <button type="submit" class="btn btn-outline-dark w-100">Register</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+{% render_bundle 'web' 'js' %}
+</body>
+</html>

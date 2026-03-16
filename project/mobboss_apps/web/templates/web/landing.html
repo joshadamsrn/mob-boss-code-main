@@ -1,0 +1,35 @@
+{% extends "web/base.html" %}
+
+{% block title %}Mob Boss | Landing{% endblock %}
+
+{% block content %}
+<section class="container py-4 py-md-5">
+    <div class="row g-4 align-items-center">
+        <div class="col-12 col-lg-7">
+            <p class="text-uppercase fw-semibold text-secondary mb-2">Mob Boss</p>
+            <h1 class="display-6 fw-bold mb-3">Server-authoritative social strategy game platform</h1>
+            <p class="lead text-secondary mb-4">
+                This landing page is the initial shell for the web experience.
+                It is mobile-first, Bootstrap-based, and ready for incremental feature wiring.
+            </p>
+            <div class="d-grid d-sm-flex gap-2">
+                <a class="btn btn-dark btn-lg" href="/operations/">Open Operations</a>
+                <a class="btn btn-outline-dark btn-lg" href="/operations/healthcheck">Healthcheck</a>
+            </div>
+        </div>
+        <div class="col-12 col-lg-5">
+            <div class="card hero-card">
+                <div class="card-body p-4">
+                    <h2 class="h5 mb-3">Current Build Status</h2>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item px-0">Template inheritance is active</li>
+                        <li class="list-group-item px-0">Root route renders from <code>web</code> app</li>
+                        <li class="list-group-item px-0">Shared header and footer are centralized</li>
+                        <li class="list-group-item px-0">Operations links are wired</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

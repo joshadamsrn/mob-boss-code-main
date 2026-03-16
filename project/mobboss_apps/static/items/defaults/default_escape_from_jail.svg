@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Escape From Jail">
+  <rect width="320" height="320" fill="#f7f8fc"/>
+  <g transform="translate(46 60)">
+    <rect x="8" y="16" width="212" height="156" rx="12" fill="#ffffff" stroke="#3b4b60" stroke-width="8"/>
+    <text x="114" y="74" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#1d2a38">EFJ</text>
+    <line x1="54" y1="98" x2="174" y2="98" stroke="#6b7f95" stroke-width="6"/>
+    <line x1="54" y1="118" x2="162" y2="118" stroke="#6b7f95" stroke-width="6"/>
+    <line x1="54" y1="138" x2="148" y2="138" stroke="#6b7f95" stroke-width="6"/>
+    <path d="M176 196 L212 228 L176 260" fill="none" stroke="#2e5b8a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="108" y1="228" x2="210" y2="228" stroke="#2e5b8a" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>

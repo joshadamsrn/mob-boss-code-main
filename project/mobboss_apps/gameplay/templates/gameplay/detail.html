@@ -1,0 +1,450 @@
+{% extends "web/base.html" %}
+
+{% block title %}Game | {{ page.game_id }}{% endblock %}
+
+{% block content %}
+<section class="container py-3 py-md-4">
+    <div class="card hero-card mb-3">
+        <div class="card-body p-3 p-md-4">
+            <h1 class="h4 mb-1">Game {{ page.game_id }}</h1>
+            <div class="small text-secondary">Room: {{ page.room_id }}</div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <span id="gamePhaseBadge" class="badge text-bg-light border">Phase: {{ page.phase }}</span>
+                <span id="gameStatusBadge" class="badge text-bg-light border">Status: {{ page.status }}</span>
+                <span id="gameRoundBadge" class="badge text-bg-light border">Round: {{ page.round_number }}</span>
+                <span id="gameVersionBadge" class="badge text-bg-light border">Version: {{ page.version }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card hero-card mb-3">
+        <div class="card-body p-3 p-md-4">
+            <h2 class="h6 mb-3">Game Plan</h2>
+            <div id="gamePlanList" class="d-flex flex-column gap-2">
+                {% for step in game_plan_steps %}
+                    <div data-phase="{{ step.phase }}" class="room-member-tile {% if page.phase == step.phase %}border border-dark{% endif %}">
+                        <div class="fw-semibold d-flex justify-content-between align-items-center">
+                            <span>{{ step.label }}</span>
+                            {% if page.phase == step.phase %}
+                                <span class="badge text-bg-dark">Current</span>
+                            {% endif %}
+                        </div>
+                        <div class="small text-secondary mt-1">{{ step.description }}</div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div id="gameMutationNotice" class="alert d-none py-2 px-3" role="status" aria-live="polite"></div>
+
+    {% include "gameplay/_participants_card.html" with participant_rows=page.participant_rows %}
+
+    {% if page.is_moderator %}
+        {% include "gameplay/_moderator_accused_selection_card.html" with page=page %}
+    {% endif %}
+
+    {% if page.can_report_death %}
+        {% include "gameplay/_moderator_report_death_card.html" with page=page %}
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const pollIntervalMs = {{ game_state_poll_interval_seconds }} * 1000;
+    const gameId = "{{ page.game_id }}";
+    const gameApiBase = `/gameplay/v1/games/${encodeURIComponent(gameId)}`;
+    const viewerUserId = "{{ page.viewer_user_id }}";
+    const isModerator = {{ page.is_moderator|yesno:"true,false" }};
+    const csrfToken = "{{ csrf_token }}";
+    const participantsContainer = document.getElementById("gameParticipantsList");
+    const phaseBadge = document.getElementById("gamePhaseBadge");
+    const statusBadge = document.getElementById("gameStatusBadge");
+    const roundBadge = document.getElementById("gameRoundBadge");
+    const versionBadge = document.getElementById("gameVersionBadge");
+    const planList = document.getElementById("gamePlanList");
+    const pendingTrialPanel = document.getElementById("pendingTrialPanel");
+    const mutationNotice = document.getElementById("gameMutationNotice");
+    const reportDeathForm = document.getElementById("reportDeathForm");
+    const advanceTimeoutForm = document.getElementById("advanceTimeoutForm");
+    const expectedVersionInput = document.getElementById("expectedVersionInput");
+    const expectedVersionLabel = document.getElementById("expectedVersionLabel");
+    const expectedVersionAdvanceInput = document.getElementById("expectedVersionAdvanceInput");
+    const murderedUserSelect = document.getElementById("murderedUserId");
+    const reportDeathButton = document.getElementById("reportDeathButton");
+    const advanceTimeoutButton = document.getElementById("advanceTimeoutButton");
+    let inFlight = false;
+    let reportDeathInFlight = false;
+    let manualAdvanceInFlight = false;
+    let timeoutAdvanceInFlight = false;
+    let currentSnapshot = null;
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    const lifeStateBadgeClass = (lifeState) => {
+      if (lifeState === "alive") return "text-bg-success";
+      if (lifeState === "jailed") return "text-bg-warning";
+      return "text-bg-secondary";
+    };
+
+    const parseJsonSafely = async (response) => {
+      try {
+        return await response.json();
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const setMutationNotice = (message, tone) => {
+      if (!mutationNotice) {
+        return;
+      }
+      const resolvedTone = tone || "secondary";
+      mutationNotice.className = `alert alert-${resolvedTone} py-2 px-3`;
+      mutationNotice.textContent = message;
+      mutationNotice.classList.remove("d-none");
+    };
+
+    const readVersionOrNull = (value) => {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) ? parsed : null;
+    };
+
+    const formatVersionConflictMessage = (problemPayload) => {
+      const expectedVersion = readVersionOrNull(problemPayload && problemPayload.expected_version);
+      const currentVersion = readVersionOrNull(problemPayload && problemPayload.current_version);
+      if (expectedVersion !== null && currentVersion !== null) {
+        return `Version conflict (expected ${expectedVersion}, current ${currentVersion}). State synced; retry manually.`;
+      }
+      return "Version conflict detected. State synced; retry manually.";
+    };
+
+    const roleLabel = (participant) => {
+      if (participant.faction && participant.role_name) {
+        return `${participant.faction} / ${participant.role_name} (${participant.rank})`;
+      }
+      return "Hidden";
+    };
+
+    const renderParticipants = (participants) => {
+      if (!participantsContainer) {
+        return;
+      }
+      if (!participants || participants.length === 0) {
+        participantsContainer.innerHTML = '<div class="text-secondary">No participants found.</div>';
+        return;
+      }
+
+      const blocks = participants.map((participant) => {
+        const isSelf = participant.user_id === viewerUserId;
+        const displayName = escapeHtml(participant.username);
+        const role = escapeHtml(roleLabel(participant));
+        return `
+          <div class="room-member-tile mb-2">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="fw-semibold">
+                ${displayName}
+                ${isSelf ? '<span class="text-secondary small">(You)</span>' : ""}
+              </div>
+              <span class="badge ${lifeStateBadgeClass(participant.life_state)}">${escapeHtml(participant.life_state)}</span>
+            </div>
+            <div class="small text-secondary mt-1">${role}</div>
+          </div>
+        `;
+      });
+      participantsContainer.innerHTML = blocks.join("");
+    };
+
+    const updatePlan = (phase) => {
+      if (!planList) {
+        return;
+      }
+      const steps = planList.querySelectorAll("[data-phase]");
+      steps.forEach((step) => {
+        const isCurrent = step.getAttribute("data-phase") === phase;
+        step.classList.toggle("border", isCurrent);
+        step.classList.toggle("border-dark", isCurrent);
+
+        const existingBadge = step.querySelector(".badge.text-bg-dark");
+        if (existingBadge && !isCurrent) {
+          existingBadge.remove();
+        }
+        if (isCurrent && !existingBadge) {
+          const header = step.querySelector(".fw-semibold");
+          if (header) {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-dark";
+            badge.textContent = "Current";
+            header.appendChild(badge);
+          }
+        }
+      });
+    };
+
+    const updateReportDeathControls = (snapshot) => {
+      if (!expectedVersionInput || !expectedVersionLabel) {
+        return;
+      }
+      expectedVersionInput.value = String(snapshot.version);
+      expectedVersionLabel.textContent = String(snapshot.version);
+      if (!murderedUserSelect) {
+        return;
+      }
+      const aliveOptions = snapshot.participants
+        .filter((participant) => participant.life_state === "alive")
+        .map((participant) => `<option value="${escapeHtml(participant.user_id)}">${escapeHtml(participant.username)}</option>`)
+        .join("");
+      murderedUserSelect.innerHTML = `<option value="">Select participant</option>${aliveOptions}`;
+
+      if (reportDeathButton) {
+        const canMutate = snapshot.status === "in_progress" && !snapshot.pending_trial;
+        reportDeathButton.disabled = !canMutate;
+        murderedUserSelect.disabled = !canMutate;
+      }
+    };
+
+    const renderPendingTrial = (snapshot) => {
+      if (!pendingTrialPanel) {
+        return;
+      }
+      const trial = snapshot.pending_trial;
+      if (!trial) {
+        pendingTrialPanel.innerHTML = '<div class="small text-secondary">No pending trial.</div>';
+      } else {
+        const currentResponder = trial.accused_selection_cursor && trial.accused_selection_cursor.length > 0
+          ? trial.accused_selection_cursor[0]
+          : "none";
+        const deadline = trial.accused_selection_deadline_epoch_seconds;
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = deadline ? Math.max(0, deadline - now) : null;
+        pendingTrialPanel.innerHTML = `
+          <div class="small text-secondary">Murdered: ${escapeHtml(trial.murdered_user_id || "unknown")}</div>
+          <div class="small text-secondary">Current responder: ${escapeHtml(currentResponder)}</div>
+          <div class="small text-secondary">Deadline: ${deadline ? `${deadline} (${remaining}s remaining)` : "none"}</div>
+        `;
+      }
+
+      if (expectedVersionAdvanceInput) {
+        expectedVersionAdvanceInput.value = String(snapshot.version);
+      }
+      if (advanceTimeoutButton) {
+        const trial = snapshot.pending_trial;
+        const now = Math.floor(Date.now() / 1000);
+        const deadline = trial ? trial.accused_selection_deadline_epoch_seconds : null;
+        const canAdvance = snapshot.phase === "accused_selection" && !!deadline && now >= deadline;
+        advanceTimeoutButton.disabled = !canAdvance;
+      }
+    };
+
+    const applySnapshot = (data) => {
+      if (!data) {
+        return;
+      }
+      currentSnapshot = data;
+      if (phaseBadge) phaseBadge.textContent = `Phase: ${data.phase}`;
+      if (statusBadge) statusBadge.textContent = `Status: ${data.status}`;
+      if (roundBadge) roundBadge.textContent = `Round: ${data.round_number}`;
+      if (versionBadge) versionBadge.textContent = `Version: ${data.version}`;
+      renderParticipants(data.participants || []);
+      updatePlan(data.phase);
+      updateReportDeathControls(data);
+      renderPendingTrial(data);
+    };
+
+    const fetchLatestSnapshot = async () => {
+      const response = await fetch(gameApiBase, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (response.redirected) {
+        window.location.href = response.url;
+        return null;
+      }
+      if (!response.ok) {
+        return null;
+      }
+      const payload = await parseJsonSafely(response);
+      return payload ? payload.data || null : null;
+    };
+
+    const syncSnapshot = async () => {
+      const latest = await fetchLatestSnapshot();
+      if (latest) {
+        applySnapshot(latest);
+      }
+      return latest;
+    };
+
+    const runVersionedMutation = async ({ path, body, successMessage }) => {
+      const response = await fetch(`${gameApiBase}${path}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify(body)
+      });
+      if (response.redirected) {
+        window.location.href = response.url;
+        return null;
+      }
+
+      if (response.status === 409) {
+        const problemPayload = await parseJsonSafely(response);
+        setMutationNotice(formatVersionConflictMessage(problemPayload), "warning");
+        await syncSnapshot();
+        return null;
+      }
+
+      if (!response.ok) {
+        const problemPayload = await parseJsonSafely(response);
+        const detail = problemPayload && problemPayload.detail ? problemPayload.detail : "Mutation failed.";
+        setMutationNotice(detail, "danger");
+        return null;
+      }
+
+      const payload = await parseJsonSafely(response);
+      if (!payload || !payload.data) {
+        setMutationNotice("Mutation succeeded but payload was empty.", "warning");
+        return null;
+      }
+      applySnapshot(payload.data);
+      if (successMessage) {
+        setMutationNotice(successMessage, "success");
+      }
+      return payload.data;
+    };
+
+    const maybeAdvanceAccusedSelectionTimeout = async (snapshot) => {
+      if (!snapshot || !isModerator || timeoutAdvanceInFlight) {
+        return;
+      }
+      const trial = snapshot.pending_trial;
+      if (snapshot.phase !== "accused_selection" || !trial || !trial.accused_selection_deadline_epoch_seconds) {
+        return;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      if (now < trial.accused_selection_deadline_epoch_seconds) {
+        return;
+      }
+
+      timeoutAdvanceInFlight = true;
+      try {
+        await runVersionedMutation({
+          path: "/advance-accused-selection-timeout",
+          body: { expected_version: snapshot.version },
+        });
+      } finally {
+        timeoutAdvanceInFlight = false;
+      }
+    };
+
+    const refreshSnapshot = async () => {
+      if (document.hidden || inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        const data = await syncSnapshot();
+        await maybeAdvanceAccusedSelectionTimeout(data);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    if (reportDeathForm) {
+      reportDeathForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (reportDeathInFlight) {
+          return;
+        }
+        const murderedUserId = murderedUserSelect ? murderedUserSelect.value : "";
+        const expectedVersion = readVersionOrNull(expectedVersionInput ? expectedVersionInput.value : null);
+        if (!murderedUserId || expectedVersion === null) {
+          setMutationNotice("Choose a murdered participant and valid expected version.", "warning");
+          return;
+        }
+
+        reportDeathInFlight = true;
+        if (reportDeathButton) {
+          reportDeathButton.disabled = true;
+        }
+        if (murderedUserSelect) {
+          murderedUserSelect.disabled = true;
+        }
+        try {
+          await runVersionedMutation({
+            path: "/report-death",
+            body: {
+              murdered_user_id: murderedUserId,
+              expected_version: expectedVersion,
+            },
+            successMessage: "Death reported.",
+          });
+        } finally {
+          reportDeathInFlight = false;
+          if (currentSnapshot) {
+            updateReportDeathControls(currentSnapshot);
+          } else {
+            if (reportDeathButton) {
+              reportDeathButton.disabled = false;
+            }
+            if (murderedUserSelect) {
+              murderedUserSelect.disabled = false;
+            }
+          }
+        }
+      });
+    }
+
+    if (advanceTimeoutForm) {
+      advanceTimeoutForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (manualAdvanceInFlight) {
+          return;
+        }
+        const expectedVersion = readVersionOrNull(
+          expectedVersionAdvanceInput ? expectedVersionAdvanceInput.value : null
+        );
+        if (expectedVersion === null) {
+          setMutationNotice("Expected version is required for timeout advance.", "warning");
+          return;
+        }
+
+        manualAdvanceInFlight = true;
+        if (advanceTimeoutButton) {
+          advanceTimeoutButton.disabled = true;
+        }
+        try {
+          await runVersionedMutation({
+            path: "/advance-accused-selection-timeout",
+            body: { expected_version: expectedVersion },
+            successMessage: "Accused-selection timeout advanced.",
+          });
+        } finally {
+          manualAdvanceInFlight = false;
+          if (currentSnapshot) {
+            renderPendingTrial(currentSnapshot);
+          } else if (advanceTimeoutButton) {
+            advanceTimeoutButton.disabled = false;
+          }
+        }
+      });
+    }
+
+    window.setInterval(refreshSnapshot, pollIntervalMs);
+    window.addEventListener("focus", refreshSnapshot);
+  })();
+</script>
+{% endblock %}

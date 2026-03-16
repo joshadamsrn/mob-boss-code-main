@@ -1,0 +1,24 @@
+{
+  "room_id": "r-3",
+  "moderator_user_id": "u_mod",
+  "launched_at_epoch_seconds": 333,
+  "participants": [
+    {
+      "user_id": "u_mob",
+      "username": "mob",
+      "faction": "Mob",
+      "role_name": "Mob Boss",
+      "rank": 1,
+      "starting_balance": 300
+    },
+    {
+      "user_id": "u_merchant",
+      "username": "merchant",
+      "faction": "Merchant",
+      "role_name": "Merchant",
+      "rank": 1,
+      "starting_balance": 400
+    }
+  ],
+  "catalog": []
+}

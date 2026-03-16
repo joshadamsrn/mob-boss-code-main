@@ -1,0 +1,97 @@
+﻿# Decisions Log
+
+## 2026-02-05
+- Renamed "GDP" to "circulating currency" for clarity.
+- Police kill limit: half of mafia (rounded down) and max 1 per round.
+- Merchant goal: starting money + 40% of total circulating currency.
+- Jury selection: random 1/4 of living players, odd and at least 3, exclude dead or jailed only.
+- Dead players can observe full player state in real time but cannot participate.
+- Jailed players are eliminated but may return via GOJFC; they do not receive Dead/Ghost visibility.
+- Police Chief succession: next highest ranking becomes Chief with role change.
+- Merchants can sell to anyone and set prices; only Merchants buy from central supply.
+- Unlimited items may be carried.
+- All trades are logged by the server.
+- Police Chief is notified immediately on death; public notification after Chief response.
+- Police Chief has 60 seconds to select a live accused; next highest gets 60 seconds if no response.
+- Moderator forces 10-second jury vote countdown; non-responses get random vote.
+- No murders or purchases during trials.
+- Offline players are treated as dead; Moderator can mark players dead at any time.
+- Dead/Ghost view is real time; Moderator can silence or disable it.
+- Stash is resolved after trial; if murderer got away, murderer claims stash.
+- Liquidation to central supply only occurs when the Moderator removes a player.
+- All monetary values are rounded down to the nearest 10.
+- Clients poll every 5 seconds for updates.
+- Moderator is final authority on unresolved disputes.
+- Moderator controls pause, resume, end, start, and can create/launch rooms and remove players pre-launch.
+- Minimum players 7, maximum players 25.
+
+## 2026-02-07
+- Monetary rounding changed to standard nearest-10 rounding (5 rounds up, below 5 rounds down).
+- Police kill limit uses half of initial Mob count (rounded down), still max 1 Police kill per round.
+- Bulletproof Vest block flow: no trial, round continues, vest is consumed, global notification is sent, attacker identity stays hidden.
+- Vest value transfers to the attacker (not refunded to vest owner).
+- Death-report visibility: Chief notified first; if timeout, next-ranked Police notified; public trial announcement only after accused selection.
+- Offline/moderator death can occur anytime, does not trigger a trial, and does not interrupt round flow.
+- "Get Out of Jail Free Card" renamed to "Escape From Jail (EFJ)".
+- EFJ can only be purchased before the first trial and cannot be purchased while jailed.
+- No player-initiated item use during active trial.
+- Guilty verdict resolution: EFJ auto-uses immediately if owned; otherwise accused is eliminated immediately.
+- If EFJ auto-uses, no stash/resource transfer and no reveal occurs.
+- EFJ money remains in-game and is assigned to a random non-accused Police player with private "accepted a bribe" notification.
+- Adopted authoritative role-count table for 7-25 players:
+- Merchant count per existing range table.
+- Remaining players split Police/Mob with odd extra assigned to Police.
+- Police roles: Chief (1), Deputy (1), remainder Officers.
+- Mob roles: Boss (1), Knife Hobo (1), remainder Mob Members.
+- Win conditions are evaluated at boundaries only.
+- Merchant goal checks have precedence at boundaries and resolve as single-winner before faction wipeout checks.
+- If no Police responder selects an accused in the 15-second response chain, no trial starts, no conviction occurs, players are notified, and murdered-player resources transfer directly to the murderer (no stash).
+- Police accused-selection timeout chain is 15 seconds per eligible Police responder in rank order.
+- Offline death handling uses forced liquidation: items return to central supply and liquidated money is distributed evenly to the player's faction.
+- Conviction correctness and transfer routing are server-confirmed (not moderator-resolved).
+- Canonical faction names are `Police`, `Mob`, `Merchant`; player-facing guess labels use `Police/Mob/Merchant`.
+- Dead-player notebook access is view-only.
+- Mob code word UX is tap-to-reveal; optional code-word rotation is a moderator pre-game setting.
+- Offline-death liquidation value uses item purchase price (not current store price).
+- EFJ (Escape From Jail) bribe transfer goes to a random Police player; Chief/Deputy/Detective are all eligible.
+- Player notebook notes persist for the full game session, can be edited/deleted by owner, and do not retain edit history.
+
+## 2026-03-03
+- Dev playtest strategy selected:
+- Use synthetic room-scoped "dev seats" as explicit participants for local testing.
+- Use moderator "view-as" tabs to inspect each seat perspective from one device.
+- View-as mode is read-only by default.
+- "Simulate actions" is an explicit opt-in toggle, only in dev mode.
+- Do not impersonate real user auth identities for playtest switching.
+- Dev controls are moderator-only and lobby-only.
+- Dev launch override remains server-authoritative via settings:
+- `ROOM_DEV_MODE`
+- `ROOM_MIN_LAUNCH_PLAYERS`
+- Launch handoff implementation direction selected:
+- `rooms.launch_game_from_room(...)` now invokes gameplay session start before room state flips to `in_progress`.
+- Launch snapshot mapping is explicit (`RoomDetailsSnapshot` -> `StartSessionFromRoomCommand`) and excludes moderator from participants.
+- Game id authority moved to gameplay repository reservation path (room service no longer owns id generation when gameplay is wired).
+- First gameplay transition scaffold: `report_death` marks victim dead and enters `accused_selection`; if no alive Police remain, branch goes directly to `boundary_resolution` with `no_conviction`.
+- Room dev-mode and launch-min settings remain adapter-owned (`ProjectSettingOutboundPort` / `RoomProjectSettingsDTO`) rather than being read directly inside room/gameplay services.
+- Added gameplay endpoints:
+- Web: `/games/{game_id}/` and moderator action `/games/{game_id}/report-death`.
+- API: `/gameplay/v1/games/{game_id}` and `/gameplay/v1/games/{game_id}/report-death`.
+- Gameplay API now applies perspective filtering: moderator sees full participant roles; participants see role details for self only.
+- Gameplay web detail now polls the gameplay API on the same cadence as room polling settings for near-real-time phase/participant updates.
+- `report_death` mutation now uses optimistic concurrency (`expected_version`) and rejects stale writes with 409 conflict.
+- `report_death` is service-level moderator-gated (not only view-gated), so non-moderator callers are rejected before mutation.
+- Conflict handling decision: keep strict manual moderator retry flow for now (no automatic rebase/retry UX in this phase).
+- Version-conflict payload for gameplay mutations is standardized to include `expected_version` and `current_version`.
+- Gameplay web now uses one shared versioned-mutation helper for `report_death` and `advance-accused-selection-timeout` (manual and poll-triggered); on 409 it syncs snapshot and prompts manual retry (no auto-retry).
+- Accused-selection timeout chain implemented as explicit authoritative mutation:
+- First `report_death` initializes deadline at `now + 15s` for first eligible police rank.
+- Timeout advance consumes one responder at a time and sets next `+15s` deadline until chain exhaustion.
+- When chain exhausts, trial resolves `no_conviction` and phase moves to `boundary_resolution`.
+- Gameplay session persistence scaffold is now SQLite-backed in default composition (`SqliteGameplayOutboundPortImpl`), with memory adapter retained for unittest mode.
+- Invariant codification completed in gameplay code/docs:
+- one-trial-per-murder gating is explicit in service and enforced by tests.
+- boundary-only win-check policy is explicitly documented in mutation flow comments.
+- role-leak prevention is documented in projection code where participant role fields are filtered.
+- Authoritative feature docs updated to match implementation:
+- added `feature_game_session_start.md`.
+- updated `feature_game_flow.md` for timeout chain + strict manual conflict handling behavior.

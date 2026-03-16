@@ -1,0 +1,83 @@
+{% extends "web/base.html" %}
+{% load render_bundle from webpack_loader %}
+
+{% block title %}Mob Boss | Lobby{% endblock %}
+
+{% block head_extra %}
+{% render_bundle 'rooms_lobby' 'css' %}
+{% endblock %}
+
+{% block content %}
+<section class="container py-3 py-md-4">
+    <div class="card hero-card">
+        <div class="card-body p-3 p-md-4">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                <h1 class="h4 mb-0">Game Room Sessions</h1>
+                <button class="btn btn-dark btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#createRoomModal" aria-label="Create new room">
+                    <i class="bi bi-plus-lg"></i> New Room
+                </button>
+            </div>
+
+            <h2 class="h6 text-uppercase text-secondary mb-2">Lobby</h2>
+            {% if lobby_rooms %}
+                <div class="list-group">
+                    {% for room in lobby_rooms %}
+                        <a href="/rooms/{{ room.room_id }}/?autojoin=1" class="list-group-item list-group-item-action py-3">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div class="fw-semibold">{{ room.name }}</div>
+                                <span class="badge text-bg-light border">{{ room.member_count }} players</span>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-secondary mb-0">No lobby rooms right now.</p>
+            {% endif %}
+
+            <hr class="my-3">
+
+            <h2 class="h6 text-uppercase text-secondary mb-2">In Progress</h2>
+            {% if in_progress_rooms %}
+                <div class="list-group">
+                    {% for room in in_progress_rooms %}
+                        <a href="/rooms/{{ room.room_id }}/?autojoin=1" class="list-group-item list-group-item-action py-3">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div class="fw-semibold">{{ room.name }}</div>
+                                <span class="badge text-bg-light border">{{ room.member_count }} players</span>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-secondary mb-0">No games currently in progress.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="modal fade" id="createRoomModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-6 mb-0">Create Room</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="post" action="/rooms/create">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <label class="form-label" for="roomName">Room Name</label>
+                        <input id="roomName" name="name" class="form-control" maxlength="100" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-dark btn-sm">Launch Room</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% render_bundle 'rooms_lobby' 'js' %}
+{% endblock %}

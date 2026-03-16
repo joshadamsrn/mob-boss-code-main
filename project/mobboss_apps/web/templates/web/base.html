@@ -1,0 +1,113 @@
+{% load render_bundle from webpack_loader %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Mob Boss{% endblock %}</title>
+    <meta name="description" content="Mob Boss game server and web experience.">
+    {% render_bundle 'web' 'css' %}
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+<header class="sticky-top">
+    <nav class="navbar navbar-light bg-white border-bottom">
+        <div class="container py-2 d-flex justify-content-between align-items-center">
+            <a class="navbar-brand brand-mark" href="/">MOB BOSS</a>
+            <div class="d-flex align-items-center gap-2">
+                {% if request.user.is_authenticated %}
+                    <div class="dropdown">
+                        <button
+                            class="btn btn-outline-dark btn-sm"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            aria-label="Open profile menu"
+                        >
+                            <i class="bi bi-person-circle"></i>
+                            <span class="ms-1">{{ request.user.username }}</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/">Lobby</a></li>
+                            <li><a class="dropdown-item" href="/operations/">Operations</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="/auth/logout/" class="mb-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger">Logout</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                {% else %}
+                    <a class="btn btn-dark btn-sm" href="/auth/">
+                        <i class="bi bi-person"></i> Login
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+</header>
+
+<main>
+    {% block content %}{% endblock %}
+</main>
+
+{% if messages %}
+    <div class="toast-container position-fixed bottom-0 end-0 p-3 me-3 mb-3" style="z-index: 1080;">
+        {% for message in messages %}
+            <div
+                class="toast app-toast align-items-center border-0 mb-2
+                    {% if 'success' in message.tags %}text-bg-success
+                    {% elif 'error' in message.tags %}text-bg-danger
+                    {% elif 'danger' in message.tags %}text-bg-danger
+                    {% elif 'warning' in message.tags %}text-bg-warning
+                    {% else %}text-bg-dark{% endif %}"
+                role="alert"
+                aria-live="assertive"
+                aria-atomic="true"
+                data-bs-autohide="true"
+                data-bs-delay="2600"
+            >
+                <div class="d-flex">
+                    <div class="toast-body py-2 px-3">{{ message }}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+{% render_bundle 'web' 'js' %}
+{% if messages %}
+<script>
+  (() => {
+    const toastEls = document.querySelectorAll(".app-toast");
+    toastEls.forEach((el) => {
+      const delayMs = Number(el.getAttribute("data-bs-delay") || "2600");
+      const closeBtn = el.querySelector("[data-bs-dismiss='toast']");
+
+      if (window.bootstrap && window.bootstrap.Toast) {
+        const toast = window.bootstrap.Toast.getOrCreateInstance(el);
+        toast.show();
+        return;
+      }
+
+      el.classList.add("show");
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          el.classList.remove("show");
+          el.remove();
+        });
+      }
+      window.setTimeout(() => {
+        el.classList.remove("show");
+        el.remove();
+      }, delayMs);
+    });
+  })();
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

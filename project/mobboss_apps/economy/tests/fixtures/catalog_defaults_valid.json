@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "classification": "knife",
+      "display_name": "Knife",
+      "base_price": 100,
+      "default_image_path": "/static/items/defaults/default_knife.svg"
+    },
+    {
+      "classification": "gun_tier_1",
+      "display_name": "Handgun (Tier 1)",
+      "base_price": 200,
+      "default_image_path": "/static/items/defaults/default_gun_tier_1.svg"
+    }
+  ]
+}

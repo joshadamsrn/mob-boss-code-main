@@ -1,0 +1,674 @@
+openapi: 3.0.3
+info:
+  title: Mob Boss Rooms API
+  version: 1.0.0
+  description: |
+    Authoritative contract for room and pre-game management endpoints.
+    Standard: JSON APIs return RFC 7807 Problem Details (`application/problem+json`) for error responses.
+servers:
+  - url: /
+paths:
+  /rooms/v1/:
+    get:
+      summary: List active rooms
+      responses:
+        '200':
+          description: Room list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSummaryListResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+    post:
+      summary: Create room (creator becomes moderator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created room summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSummaryResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}:
+    get:
+      summary: Get room details
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/join:
+    post:
+      summary: Join room
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/leave:
+    post:
+      summary: Leave room
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/readiness:
+    post:
+      summary: Set readiness (participant self-only, moderator may target anyone)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_ready]
+              properties:
+                user_id:
+                  type: string
+                is_ready:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/roles/assign:
+    post:
+      summary: Assign pre-game role in room (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_user_id, faction, role_name, rank]
+              properties:
+                target_user_id:
+                  type: string
+                faction:
+                  $ref: '#/components/schemas/FactionName'
+                role_name:
+                  type: string
+                rank:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/balances:
+    post:
+      summary: Set pre-game member balance (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_user_id, starting_balance]
+              properties:
+                target_user_id:
+                  type: string
+                starting_balance:
+                  type: integer
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/catalog:
+    get:
+      summary: List room catalog items
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Catalog list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomItemListResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/catalog/{classification}:
+    put:
+      summary: Upsert room catalog item by approved classification (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - $ref: '#/components/parameters/Classification'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name, base_price]
+              properties:
+                display_name:
+                  type: string
+                base_price:
+                  type: integer
+                image_path:
+                  type: string
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/catalog/{classification}/image:
+    post:
+      summary: Replace item image (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - $ref: '#/components/parameters/Classification'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_path:
+                  type: string
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/catalog/{classification}/deactivate:
+    post:
+      summary: Deactivate catalog item (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - $ref: '#/components/parameters/Classification'
+      responses:
+        '200':
+          description: Updated room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/launch:
+    post:
+      summary: Launch game from room (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Launch result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      game_id:
+                        type: string
+                  error:
+                    nullable: true
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/delete:
+    post:
+      summary: Delete room (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      room_id:
+                        type: string
+                      deleted:
+                        type: boolean
+                  error:
+                    nullable: true
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /rooms/v1/{room_id}/shuffle-roles:
+    post:
+      summary: Shuffle role assignments among joined room members (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seed:
+                  type: integer
+      responses:
+        '200':
+          description: Updated room details after shuffle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /gameplay/v1/games/{game_id}:
+    get:
+      summary: Get game details with perspective filtering
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Game details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /gameplay/v1/games/{game_id}/report-death:
+    post:
+      summary: Report a death and advance game state (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [murdered_user_id, expected_version]
+              properties:
+                murdered_user_id:
+                  type: string
+                expected_version:
+                  type: integer
+      responses:
+        '200':
+          description: Updated game details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+  /gameplay/v1/games/{game_id}/advance-accused-selection-timeout:
+    post:
+      summary: Advance accused-selection timeout chain to next eligible police rank (moderator-only)
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_version]
+              properties:
+                expected_version:
+                  type: integer
+      responses:
+        '200':
+          description: Updated game details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameDetailsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetailsResponse'
+components:
+  responses:
+    ProblemDetailsResponse:
+      description: RFC 7807 Problem Details error response.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  parameters:
+    RoomId:
+      in: path
+      name: room_id
+      required: true
+      schema:
+        type: string
+    Classification:
+      in: path
+      name: classification
+      required: true
+      schema:
+        $ref: '#/components/schemas/ItemClassification'
+    GameId:
+      in: path
+      name: game_id
+      required: true
+      schema:
+        type: string
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          description: Problem type URI.
+          example: https://mobboss.dev/problems/unprocessable-entity
+        title:
+          type: string
+          example: Unprocessable Entity
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+          example: Invalid JSON payload.
+        instance:
+          type: string
+          description: Request path where the problem occurred.
+          example: /rooms/v1/123/readiness
+        code:
+          type: string
+          description: Stable application error code.
+          example: invalid_request
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    FactionName:
+      type: string
+      enum: [Police, Mob, Merchant]
+    MembershipStatus:
+      type: string
+      enum: [joined, left, kicked]
+    ItemClassification:
+      type: string
+      enum:
+        - knife
+        - gun_tier_1
+        - gun_tier_2
+        - gun_tier_3
+        - bulletproof_vest
+        - escape_from_jail
+    RoomRoleAssignment:
+      type: object
+      properties:
+        faction:
+          $ref: '#/components/schemas/FactionName'
+        role_name:
+          type: string
+        rank:
+          type: integer
+    RoomMember:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        membership_status:
+          $ref: '#/components/schemas/MembershipStatus'
+        is_ready:
+          type: boolean
+        starting_balance:
+          type: integer
+        assigned_role:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/RoomRoleAssignment'
+    RoomItem:
+      type: object
+      properties:
+        classification:
+          $ref: '#/components/schemas/ItemClassification'
+        display_name:
+          type: string
+        base_price:
+          type: integer
+        image_path:
+          type: string
+        is_active:
+          type: boolean
+    RoomSummary:
+      type: object
+      properties:
+        room_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [lobby, in_progress, ended]
+        moderator_user_id:
+          type: string
+        member_count:
+          type: integer
+    RoomDetails:
+      type: object
+      properties:
+        room_id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [lobby, in_progress, ended]
+        moderator_user_id:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomMember'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomItem'
+    RoomSummaryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RoomSummary'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ErrorObject'
+    RoomSummaryListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomSummary'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ErrorObject'
+    RoomDetailsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RoomDetails'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ErrorObject'
+    RoomItemListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomItem'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ErrorObject'
+    GameParticipant:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        life_state:
+          type: string
+          enum: [alive, dead, jailed]
+        faction:
+          $ref: '#/components/schemas/FactionName'
+        role_name:
+          type: string
+        rank:
+          type: integer
+    GameTrialState:
+      type: object
+      properties:
+        murdered_user_id:
+          type: string
+        murderer_user_id:
+          type: string
+          nullable: true
+        accused_user_id:
+          type: string
+          nullable: true
+        accused_selection_cursor:
+          type: array
+          items:
+            type: string
+        accused_selection_deadline_epoch_seconds:
+          type: integer
+          nullable: true
+        jury_user_ids:
+          type: array
+          items:
+            type: string
+        vote_deadline_epoch_seconds:
+          type: integer
+          nullable: true
+        votes:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+        verdict:
+          type: string
+          nullable: true
+          enum: [guilty, innocent]
+        conviction_correct:
+          type: boolean
+          nullable: true
+        resolution:
+          type: string
+          nullable: true
+    GameDetails:
+      type: object
+      properties:
+        game_id:
+          type: string
+        room_id:
+          type: string
+        status:
+          type: string
+          enum: [in_progress, paused, ended]
+        phase:
+          type: string
+          enum: [information, accused_selection, trial_voting, boundary_resolution, ended]
+        round_number:
+          type: integer
+        version:
+          type: integer
+        launched_at_epoch_seconds:
+          type: integer
+        ended_at_epoch_seconds:
+          type: integer
+          nullable: true
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameParticipant'
+        pending_trial:
+          allOf:
+            - $ref: '#/components/schemas/GameTrialState'
+          nullable: true
+    GameDetailsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/GameDetails'
+        error:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ErrorObject'

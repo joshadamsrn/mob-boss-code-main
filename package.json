@@ -1,0 +1,24 @@
+{
+  "name": "mob-boss-code",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mob Boss web client/tooling workspace",
+  "scripts": {
+    "build": "webpack --config webpack.config.js --mode production",
+    "watch": "webpack --config webpack.config.js --mode development --watch",
+    "dev": "webpack --config webpack.config.js --mode development --watch",
+    "test": "npm run python:test",
+    "python:test": ".venv\\Scripts\\python.exe -m unittest discover -s project/mobboss_apps/tests -p \"test_*.py\" -v"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.3",
+    "bootstrap-icons": "^1.13.1"
+  },
+  "devDependencies": {
+    "css-loader": "^7.1.2",
+    "mini-css-extract-plugin": "^2.9.4",
+    "webpack": "^5.101.3",
+    "webpack-bundle-tracker": "^3.2.3",
+    "webpack-cli": "^6.0.1"
+  }
+}

@@ -1,0 +1,40 @@
+<div class="card hero-card mb-3">
+    <div class="card-body p-3 p-md-4">
+        <h2 class="h6 mb-3">Accused Selection</h2>
+        <div id="pendingTrialPanel">
+            {% if page.pending_trial %}
+                <div class="small text-secondary">Murdered: {{ page.pending_trial.murdered_user_id }}</div>
+                <div class="small text-secondary">
+                    Current responder:
+                    {% if page.pending_trial.current_responder_user_id %}
+                        {{ page.pending_trial.current_responder_user_id }}
+                    {% else %}
+                        none
+                    {% endif %}
+                </div>
+                <div class="small text-secondary">
+                    Deadline:
+                    {% if page.pending_trial.accused_selection_deadline_epoch_seconds %}
+                        {{ page.pending_trial.accused_selection_deadline_epoch_seconds }}
+                    {% else %}
+                        none
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="small text-secondary">No pending trial.</div>
+            {% endif %}
+        </div>
+        <form id="advanceTimeoutForm" method="post" action="/games/{{ page.game_id }}/advance-accused-selection-timeout" class="mt-3">
+            {% csrf_token %}
+            <input id="expectedVersionAdvanceInput" type="hidden" name="expected_version" value="{{ page.version }}">
+            <button
+                id="advanceTimeoutButton"
+                class="btn btn-outline-dark btn-sm w-100 w-sm-auto"
+                type="submit"
+                {% if page.phase != "accused_selection" or not page.pending_trial or not page.pending_trial.accused_selection_deadline_epoch_seconds %}disabled{% endif %}
+            >
+                Advance Accused Timeout
+            </button>
+        </form>
+    </div>
+</div>

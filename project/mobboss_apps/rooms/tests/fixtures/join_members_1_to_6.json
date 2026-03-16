@@ -1,0 +1,10 @@
+{
+  "members": [
+    {"user_id": "u_1", "username": "p1"},
+    {"user_id": "u_2", "username": "p2"},
+    {"user_id": "u_3", "username": "p3"},
+    {"user_id": "u_4", "username": "p4"},
+    {"user_id": "u_5", "username": "p5"},
+    {"user_id": "u_6", "username": "p6"}
+  ]
+}

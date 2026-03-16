@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Intel Briefcase">
+  <rect width="256" height="256" fill="#f3f6fa"/>
+  <rect x="44" y="86" width="168" height="112" rx="14" fill="#334155"/>
+  <rect x="44" y="118" width="168" height="12" fill="#1f2937"/>
+  <rect x="102" y="70" width="52" height="20" rx="6" fill="#64748b"/>
+  <rect x="114" y="130" width="28" height="18" rx="4" fill="#fbbf24"/>
+  <circle cx="128" cy="139" r="4" fill="#111827"/>
+  <text x="128" y="176" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#e2e8f0">INTEL</text>
+</svg>

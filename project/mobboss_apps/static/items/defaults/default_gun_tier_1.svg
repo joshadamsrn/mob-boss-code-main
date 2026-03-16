@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Gun Tier I">
+  <rect width="320" height="320" fill="#f3f6fa"/>
+  <g transform="translate(36 78)">
+    <rect x="24" y="84" width="170" height="34" rx="8" fill="#4a5563"/>
+    <rect x="162" y="56" width="52" height="28" rx="4" fill="#5a6675"/>
+    <rect x="72" y="118" width="42" height="58" rx="6" fill="#333b45"/>
+    <rect x="194" y="92" width="60" height="10" rx="4" fill="#707d8d"/>
+  </g>
+</svg>

@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "classification": "laser",
+      "display_name": "Laser",
+      "base_price": 999,
+      "default_image_path": "/static/items/defaults/default_laser.svg"
+    }
+  ]
+}
