@@ -116,7 +116,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 "room_id": room_id,
                 "user_id": actor_user_id,
                 "username": request.user.username,
-                "autojoin": request.GET.get("autojoin", ""),
+                "autojoin": _parse_bool_flag(request.GET.get("autojoin")),
             }
         )
         container = get_container()
@@ -264,8 +264,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
             },
         )
     except Exception as exc:
-        messages.error(request, str(exc))
-        return redirect("web-lobby")
+        raise
 
 
 @login_required(login_url="/auth/")
@@ -304,13 +303,13 @@ def add_dev_seat(request: HttpRequest, room_id: str) -> HttpResponse:
         actor_user_id = _current_user_id(request)
         container = get_container()
         if not container.room_dev_mode:
-            messages.error(request, str(exc)) PermissionError("Dev seat controls are disabled.")
+            raise PermissionError("Dev seat controls are disabled.")
         rooms_inbound = container.rooms_inbound_port
         room = rooms_inbound.get_room_details(room_id)
         if room.moderator_user_id != actor_user_id:
-            messages.error(request, str(exc)) PermissionError("Only moderator can add dev seats.")
+            raise PermissionError("Only moderator can add dev seats.")
         if room.status != "lobby":
-            messages.error(request, str(exc)) ValueError("Dev seats can only be managed in lobby.")
+            raise ValueError("Dev seats can only be managed in lobby.")
 
         seat_number = _next_dev_seat_number(room.members)
         seat_user_id = _build_dev_seat_user_id(seat_number)
@@ -337,16 +336,16 @@ def remove_dev_seat(request: HttpRequest, room_id: str) -> HttpResponse:
         actor_user_id = _current_user_id(request)
         seat_user_id = str(request.POST.get("user_id", "")).strip()
         if not _is_dev_seat_user_id(seat_user_id):
-            messages.error(request, str(exc)) ValueError("Target is not a dev seat.")
+            raise ValueError("Target is not a dev seat.")
         container = get_container()
         if not container.room_dev_mode:
-            messages.error(request, str(exc)) PermissionError("Dev seat controls are disabled.")
+            raise PermissionError("Dev seat controls are disabled.")
         rooms_inbound = container.rooms_inbound_port
         room = rooms_inbound.get_room_details(room_id)
         if room.moderator_user_id != actor_user_id:
-            messages.error(request, str(exc)) PermissionError("Only moderator can remove dev seats.")
+            raise PermissionError("Only moderator can remove dev seats.")
         if room.status != "lobby":
-            messages.error(request, str(exc)) ValueError("Dev seats can only be managed in lobby.")
+            raise ValueError("Dev seats can only be managed in lobby.")
 
         leave_dto = LeaveRoomRequestDTO.from_payload({"room_id": room_id, "user_id": seat_user_id})
         rooms_inbound.leave_room(leave_dto.to_command())
