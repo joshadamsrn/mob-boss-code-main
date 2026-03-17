@@ -1,609 +1,419 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2299.77">
-  <style type="text/css">
-    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000}
-    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; -webkit-text-stroke: #000000; min-height: 14.0px}
-    span.s1 {font-kerning: none}
-  </style>
-</head>
-<body>
-<p class="p1"><span class="s1">{% extends "web/base.html" %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1">{% block title %}Room | {{ room.name }}{% endblock %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1">{% block content %}</span></p>
-<p class="p1"><span class="s1">&lt;section class="container py-3 py-md-4 room-shell"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div class="card hero-card room-summary-card mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="card-body p-3 p-md-4"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="room-summary-head {% if is_moderator or is_joined %}room-summary-head-has-launch{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="room-title-block text-center"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;h1 class="h4 mb-1"&gt;{{ room.name }}&lt;/h1&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;p class="text-secondary mb-0 small"&gt;Moderator: {{ room.moderator_user_id }}&lt;/p&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if is_joined and not is_view_as_mode %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="room-leave-slot"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;form</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>method="post"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>action="/rooms/{{ room.room_id }}/leave"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>class="mb-0"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% if is_moderator %}onsubmit="return confirm('Leaving will close this room for all players. Continue?');"{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;button class="btn btn-outline-danger btn-sm" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;i class="bi bi-box-arrow-left"&gt;&lt;/i&gt; Leave</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="room-launch-slot"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/launch" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;button class="btn btn-success btn-sm room-launch-btn" type="submit" {% if not can_launch %}disabled{% endif %}&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;i class="bi bi-rocket-takeoff"&gt;&lt;/i&gt; Launch</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% elif is_joined and (not is_view_as_mode or simulate_actions_enabled) %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="room-launch-slot"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/ready" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;input type="hidden" name="user_id" value="{{ current_user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;input type="hidden" name="is_ready" value="{% if current_member and current_member.is_ready %}false{% else %}true{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;input type="hidden" name="as_user_id" value="{{ current_user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;button class="btn {% if current_member and current_member.is_ready %}btn-outline-secondary{% else %}btn-outline-success{% endif %} btn-sm room-launch-btn" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% if current_member and current_member.is_ready %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;i class="bi bi-x-circle"&gt;&lt;/i&gt; Unready</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;i class="bi bi-check2-circle"&gt;&lt;/i&gt; Ready</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% elif is_lobby %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="room-launch-slot"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/join" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;button class="btn btn-primary btn-sm room-launch-btn" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;i class="bi bi-box-arrow-in-right"&gt;&lt;/i&gt; Join Room</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="d-flex flex-wrap justify-content-between gap-2 mt-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;span class="badge text-bg-light border"&gt;Players: {{ player_count }}/25&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;span class="badge text-bg-light border"&gt;Total: ${{ total_player_starting_balance }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if is_lobby %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;span class="badge text-bg-light border"&gt;Min: {{ player_count }}/{{ launch_min_players }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;span class="badge text-bg-light border"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% if all_joined_ready %}All Ready{% else %}Waiting on Ready{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% if dev_launch_override_active %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;span class="badge text-bg-info"&gt;DEV Min Override&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if waitlist_count &gt; 0 %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;span class="badge text-bg-light border"&gt;Waitlist: {{ waitlist_count }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;span class="badge {% if can_launch %}text-bg-success{% else %}text-bg-warning{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% if can_launch %}Launch Ready{% else %}Not Ready{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>{% if is_view_as_mode and not simulate_actions_enabled %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="small text-secondary mt-2"&gt;Read-only dev view as {{ viewing_user_label }}.&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>{% elif is_view_as_mode and simulate_actions_enabled %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="small text-warning mt-2"&gt;Simulating actions as {{ viewing_user_label }} (dev mode).&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>{% if actor_is_moderator and dev_mode_enabled and view_tabs %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="card hero-card mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="card-body p-3 p-md-4"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="small text-uppercase text-secondary mb-2"&gt;Dev View Tabs&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="d-flex flex-wrap gap-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% for tab in view_tabs %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;a href="{{ tab.href }}" class="btn btn-xs {% if tab.is_active %}btn-dark{% else %}btn-outline-dark{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{{ tab.label }}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/a&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% endfor %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% if is_view_as_mode %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="mt-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;a</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>href="/rooms/{{ room.room_id }}/?as_user_id={{ current_user_id }}{% if not simulate_actions_enabled %}&amp;simulate_actions=1{% endif %}"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>class="btn btn-xs {% if simulate_actions_enabled %}btn-outline-warning{% else %}btn-warning{% endif %}"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% if simulate_actions_enabled %}Disable Simulate Actions{% else %}Enable Simulate Actions{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/a&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div class="row g-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="col-12"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="card hero-card mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="card-body p-3 p-md-4"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="d-flex justify-content-between align-items-center mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;h2 id="roomMembersHeading" class="h6 mb-0"&gt;Members ({{ joined_count }})&lt;/h2&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/shuffle-roles" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;button id="autoShuffleButton" class="btn btn-outline-primary btn-xs" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;i id="autoShuffleIcon" class="bi bi-shuffle"&gt;&lt;/i&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;span id="autoShuffleLabel"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% if is_lobby and is_joined %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>Shuffle {{ room_auto_shuffle_interval_seconds }}s</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>Shuffle</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% if can_manage_dev_seats %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;div class="d-flex flex-wrap align-items-center gap-2 mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/dev/add-seat" class="d-flex flex-wrap align-items-center gap-2 mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;input</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>class="form-control form-control-sm"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>type="text"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>name="seat_name"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>maxlength="40"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>placeholder="Dev Seat Name (optional)"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;input type="hidden" name="as_user_id" value="{{ current_user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;button class="btn btn-outline-dark btn-xs" type="submit"&gt;Add Dev Seat&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;span class="small text-secondary"&gt;Use tabs above to inspect each seat's perspective.&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div id="roomMembersList"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% if moderator_member %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;div class="room-member-tile {% if moderator_member.membership_status != 'joined' %}room-member-tile-muted{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;div class="d-flex justify-content-between align-items-start gap-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="fw-semibold"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{{ moderator_member.username }}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% if moderator_member.user_id == current_user_id %}&lt;span class="text-secondary small"&gt;(You)&lt;/span&gt;{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;span class="badge text-bg-dark"&gt;Moderator&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% if is_moderator or moderator_member.user_id == current_user_id %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="small mt-1 room-role-money"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="room-role-line"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span class="text-secondary"&gt;Role:&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span&gt;Moderator&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="room-money-line"&gt;&lt;span class="text-secondary"&gt;-&lt;/span&gt;&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% if player_member_rows %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;hr class="my-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% for member in player_member_rows %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;div class="room-member-tile {% if member.membership_status != 'joined' %}room-member-tile-muted{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;div class="d-flex justify-content-between align-items-start gap-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="fw-semibold"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{{ member.username }}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if member.user_id == current_user_id %}&lt;span class="text-secondary small"&gt;(You)&lt;/span&gt;{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if member.user_id in dev_seat_user_ids %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="badge text-bg-info"&gt;Dev Seat&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="d-flex flex-wrap gap-1 justify-content-end"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;span class="badge text-bg-light border"&gt;{{ member.membership_status }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;span class="badge {% if member.is_ready %}text-bg-success{% else %}text-bg-secondary{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if member.is_ready %}Ready{% else %}Not Ready{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="small mt-1 room-role-money"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="room-role-line"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span class="text-secondary"&gt;Role:&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if member.assigned_role %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span&gt;{{ member.assigned_role.faction }} / {{ member.assigned_role.role_name }} ({{ member.assigned_role.rank }})&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="text-secondary"&gt;Unassigned&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="room-money-line"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span class="room-money"&gt;${{ member.starting_balance }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% if is_moderator and member.membership_status == "joined" %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="d-flex justify-content-between align-items-center gap-2 mt-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="room-action-strip"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if member.user_id in dev_seat_user_ids %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/dev/remove-seat" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input type="hidden" name="user_id" value="{{ member.user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input type="hidden" name="as_user_id" value="{{ current_user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;button class="btn btn-outline-danger btn-xs" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;i class="bi bi-trash"&gt;&lt;/i&gt; Remove Seat</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;button class="btn btn-outline-danger btn-xs" type="button" disabled&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;i class="bi bi-person-x"&gt;&lt;/i&gt; Kick</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;button</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>class="btn btn-outline-danger btn-xs"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>type="button"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>onclick="return confirm('If banned, this player cannot rejoin this game. Continue?');"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;i class="bi bi-person-slash"&gt;&lt;/i&gt; Ban</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/ready" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;input type="hidden" name="user_id" value="{{ member.user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;input type="hidden" name="is_ready" value="{% if member.is_ready %}false{% else %}true{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;input type="hidden" name="as_user_id" value="{{ current_user_id }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;button class="btn btn-outline-success btn-xs" type="submit"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>{% if member.is_ready %}Mark Unready{% else %}Mark Ready{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% endfor %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>{% if waitlist_count &gt; 0 %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="card hero-card mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="card-body p-3 p-md-4"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;h2 class="h6 mb-2"&gt;Waitlist&lt;/h2&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;p class="small text-secondary mb-2"&gt;FIFO queue (capacity overflow target).&lt;/p&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;ul class="list-group list-group-flush"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% for queued in waitlist %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;li class="list-group-item px-0 py-2"&gt;{{ queued }}&lt;/li&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% endfor %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/ul&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="card hero-card"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="card-body p-3 p-md-4"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="d-flex justify-content-between align-items-center gap-2 mb-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;h2 class="h6 mb-0"&gt;Catalog ({{ catalog_items|length }})&lt;/h2&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;div class="room-action-strip"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;button class="btn btn-outline-secondary btn-xs" type="button" data-bs-toggle="collapse" data-bs-target="#catalogPanel" aria-expanded="true" aria-controls="catalogPanel"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;i class="bi bi-arrows-collapse"&gt;&lt;/i&gt; Collapse</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;button class="btn btn-dark btn-xs" type="button" data-bs-toggle="collapse" data-bs-target="#catalogAddForm" aria-expanded="false" aria-controls="catalogAddForm"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;i class="bi bi-plus-lg"&gt;&lt;/i&gt; Add</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;p class="small text-secondary mb-2"&gt;Current item states for all players.&lt;/p&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;div id="catalogAddForm" class="collapse mb-3"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;div class="room-item-tile"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/upsert-item" enctype="multipart/form-data" class="room-compact-form"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;label for="itemClassification"&gt;Classification&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;select id="itemClassification" class="form-select form-select-sm" name="classification"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% for item_class in item_classifications %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;option value="{{ item_class.code }}"&gt;{{ item_class.display_name }}&lt;/option&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% endfor %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/select&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;label for="itemDisplayName" class="mt-2"&gt;Display Name&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;input id="itemDisplayName" class="form-control form-control-sm" name="display_name" required&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;label for="itemPrice" class="mt-2"&gt;Base Price&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;input id="itemPrice" class="form-control form-control-sm" type="number" name="base_price" min="0" value="100" required&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;label for="itemImage" class="mt-2"&gt;Item Image (Camera)&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;input id="itemImage" class="form-control form-control-sm" type="file" name="item_image" accept="image/*" capture="environment"&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;button class="btn btn-dark btn-sm mt-2" type="submit"&gt;Save Item&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>{% endif %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div id="catalogPanel" class="collapse show catalog-scroll-panel"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% if catalog_items %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% for card in catalog_items %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% if is_moderator or card.item.is_active %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="room-item-row"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;button</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>type="button"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>class="room-item-open"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>data-bs-toggle="modal"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>data-bs-target="#catalogImageModal{{ card.index }}"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>aria-label="View {{ card.item.display_name }} image"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span class="room-item-idx"&gt;#{{ card.index }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if card.tile_image_path %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;i class="bi bi-image"&gt;&lt;/i&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;span class="room-item-meta"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="room-item-title-line"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;span class="fw-semibold"&gt;{{ card.item.display_name }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>{% if card.item.is_active %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                            </span>&lt;span class="badge text-bg-success"&gt;Active&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                            </span>&lt;span class="badge text-bg-secondary"&gt;Inactive&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="small text-secondary"&gt;{{ card.classification_display_name }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;span class="room-item-price"&gt;${{ card.item.base_price }}&lt;/span&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;div class="room-action-strip room-item-actions"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;button class="btn btn-outline-primary btn-xs" type="button" data-bs-toggle="collapse" data-bs-target="#catalogEdit{{ card.index }}" aria-expanded="false" aria-controls="catalogEdit{{ card.index }}"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>Edit</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>{% if card.is_required %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;button class="btn btn-outline-secondary btn-xs" type="button" disabled&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;i class="bi bi-lock"&gt;&lt;/i&gt; Required</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/deactivate-item/{{ card.item.classification }}" class="mb-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;button class="btn btn-outline-danger btn-xs" type="submit"&gt;Deactivate&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;div class="modal fade catalog-image-modal" id="catalogImageModal{{ card.index }}" tabindex="-1" aria-hidden="true"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div class="modal-dialog modal-dialog-centered"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;div class="modal-content border-0 bg-transparent shadow-none"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;div class="modal-body p-0"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% if card.full_image_path %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;img src="{{ card.full_image_path }}" alt="{{ card.item.display_name }}" class="catalog-image-preview"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;div class="catalog-image-placeholder d-flex align-items-center justify-content-center text-secondary bg-white rounded"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                            </span>&lt;i class="bi bi-image"&gt;&lt;/i&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>{% if is_moderator %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;div id="catalogEdit{{ card.index }}" class="collapse mb-2"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;div class="room-item-tile"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;form method="post" action="/rooms/{{ room.room_id }}/upsert-item" enctype="multipart/form-data" class="room-compact-form"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>{% csrf_token %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input type="hidden" name="classification" value="{{ card.item.classification }}"&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;label for="itemDisplayName{{ card.index }}"&gt;Display Name&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input id="itemDisplayName{{ card.index }}" class="form-control form-control-sm" name="display_name" value="{{ card.item.display_name }}" required&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;label for="itemPrice{{ card.index }}" class="mt-2"&gt;Base Price&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input id="itemPrice{{ card.index }}" class="form-control form-control-sm" type="number" name="base_price" min="0" value="{{ card.item.base_price }}" required&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;label for="itemImage{{ card.index }}" class="mt-2"&gt;Replace Image (Camera)&lt;/label&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;input id="itemImage{{ card.index }}" class="form-control form-control-sm" type="file" name="item_image" accept="image/*" capture="environment"&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                    </span>&lt;button class="btn btn-dark btn-xs mt-2" type="submit"&gt;Save Changes&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                                </span>&lt;/form&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                    </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>{% endfor %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% else %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;p class="text-secondary mb-0"&gt;No catalog items yet.&lt;/p&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>{% endif %}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1">&lt;/section&gt;</span></p>
-<p class="p1"><span class="s1">{% endblock %}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1">{% block scripts %}</span></p>
-<p class="p1"><span class="s1">&lt;script&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">  </span>(() =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const intervalMs = {{ room_state_poll_interval_seconds }} * 1000;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>let inFlight = false;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const refreshRoomMembers = async () =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (document.hidden || inFlight) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>inFlight = true;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>try {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const url = new URL(window.location.href);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>url.searchParams.delete("autojoin");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const response = await fetch(url.toString(), {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>method: "GET",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>cache: "no-store",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>credentials: "same-origin",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>headers: { "X-Requested-With": "XMLHttpRequest" }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>});</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (response.redirected) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>window.location.href = response.url;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (!response.ok) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const html = await response.text();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const doc = new DOMParser().parseFromString(html, "text/html");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const nextHeading = doc.getElementById("roomMembersHeading");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const nextList = doc.getElementById("roomMembersList");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const currentHeading = document.getElementById("roomMembersHeading");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const currentList = document.getElementById("roomMembersList");</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (nextHeading &amp;&amp; currentHeading) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>currentHeading.textContent = nextHeading.textContent;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (nextList &amp;&amp; currentList) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>currentList.innerHTML = nextList.innerHTML;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>} finally {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>inFlight = false;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>};</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>window.refreshRoomMembers = refreshRoomMembers;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>window.setInterval(refreshRoomMembers, intervalMs);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>window.addEventListener("focus", refreshRoomMembers);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">  </span>})();</span></p>
-<p class="p1"><span class="s1">&lt;/script&gt;</span></p>
-<p class="p1"><span class="s1">{% if is_moderator and is_lobby and is_joined %}</span></p>
-<p class="p1"><span class="s1">&lt;script&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">  </span>(() =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const shuffleUrl = "/rooms/{{ room.room_id }}/shuffle-roles";</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const csrfToken = "{{ csrf_token }}";</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const roomId = "{{ room.room_id }}";</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const intervalMs = {{ room_auto_shuffle_interval_seconds }} * 1000;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const storageKey = `roomAutoShuffleDueAt:${roomId}`;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const shuffleButton = document.getElementById("autoShuffleButton");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const shuffleIcon = document.getElementById("autoShuffleIcon");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const shuffleLabel = document.getElementById("autoShuffleLabel");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>let inFlight = false;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>let spinAnimation = null;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const nowMs = () =&gt; Date.now();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const readDueAt = () =&gt; Number(window.localStorage.getItem(storageKey) || "");</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const writeDueAt = (ts) =&gt; window.localStorage.setItem(storageKey, String(ts));</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>let dueAtMs = readDueAt();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>if (!Number.isFinite(dueAtMs) || dueAtMs &lt;= nowMs()) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>dueAtMs = nowMs() + intervalMs;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>writeDueAt(dueAtMs);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const startSpin = () =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (!shuffleIcon || spinAnimation) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>spinAnimation = shuffleIcon.animate(</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>[{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>{ duration: 700, iterations: Infinity }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>};</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const stopSpin = () =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (!spinAnimation) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>spinAnimation.cancel();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>spinAnimation = null;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>};</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const shuffleSilently = async () =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (document.hidden || inFlight) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>inFlight = true;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (shuffleButton) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>shuffleButton.disabled = true;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>startSpin();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (shuffleLabel) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>shuffleLabel.textContent = "Shuffling...";</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>try {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const response = await fetch(shuffleUrl, {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>method: "POST",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>headers: {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>"Content-Type": "application/x-www-form-urlencoded",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>"X-CSRFToken": csrfToken,</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>"X-Requested-With": "XMLHttpRequest"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>},</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>body: "silent=true",</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>credentials: "same-origin"</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>});</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>dueAtMs = nowMs() + intervalMs;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>writeDueAt(dueAtMs);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (response.ok) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>if (typeof window.refreshRoomMembers === "function") {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>await window.refreshRoomMembers();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>} finally {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>inFlight = false;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>if (shuffleButton) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">          </span>shuffleButton.disabled = false;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>stopSpin();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>};</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const formatCountdown = (ms) =&gt; `${Math.max(1, Math.ceil(ms / 1000))}s`;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>const renderCountdown = (ms) =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (!shuffleLabel || inFlight) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>shuffleLabel.textContent = `Shuffle ${formatCountdown(ms)}`;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>};</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>renderCountdown(dueAtMs - nowMs());</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>window.setInterval(() =&gt; {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (document.hidden) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (inFlight) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>const remainingMs = dueAtMs - nowMs();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>if (remainingMs &lt;= 0) {</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>shuffleSilently();</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>return;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>}</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">      </span>renderCountdown(remainingMs);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>}, 1000);</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">  </span>})();</span></p>
-<p class="p1"><span class="s1">&lt;/script&gt;</span></p>
-<p class="p1"><span class="s1">{% endif %}</span></p>
-<p class="p1"><span class="s1">{% endblock %}</span></p>
-</body>
-</html>
+{% extends "web/base.html" %}
+
+{% block title %}Room | {{ room.name }}{% endblock %}
+
+{% block content %}
+<section class="container py-3 py-md-4 room-shell">
+    <div class="card hero-card room-summary-card mb-3">
+        <div class="card-body p-3 p-md-4">
+            <div class="room-summary-head {% if is_moderator or is_joined %}room-summary-head-has-launch{% endif %}">
+                <div class="room-title-block text-center">
+                    <h1 class="h4 mb-1">{{ room.name }}</h1>
+                    <p class="text-secondary mb-0 small">Moderator: {{ room.moderator_user_id }}</p>
+                </div>
+                {% if is_joined and not is_view_as_mode %}
+                    <div class="room-leave-slot">
+                        <form
+                            method="post"
+                            action="/rooms/{{ room.room_id }}/leave"
+                            class="mb-0"
+                            {% if is_moderator %}onsubmit="return confirm('Leaving will close this room for all players. Continue?');"{% endif %}
+                        >
+                            {% csrf_token %}
+                            <button class="btn btn-outline-danger btn-sm" type="submit">
+                                <i class="bi bi-box-arrow-left"></i> Leave
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+                {% if is_moderator %}
+                    <div class="room-launch-slot">
+                        <form method="post" action="/rooms/{{ room.room_id }}/launch" class="mb-0">
+                            {% csrf_token %}
+                            <button class="btn btn-success btn-sm room-launch-btn" type="submit" {% if not can_launch %}disabled{% endif %}>
+                                <i class="bi bi-rocket-takeoff"></i> Launch
+                            </button>
+                        </form>
+                    </div>
+                {% elif is_joined %}
+                    <div class="room-launch-slot">
+                        <form method="post" action="/rooms/{{ room.room_id }}/ready" class="mb-0">
+                            {% csrf_token %}
+                            <input type="hidden" name="user_id" value="{{ current_user_id }}">
+                            <input type="hidden" name="is_ready" value="{% if current_member and current_member.is_ready %}false{% else %}true{% endif %}">
+                            <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                            <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                            <button class="btn {% if current_member and current_member.is_ready %}btn-outline-secondary{% else %}btn-outline-success{% endif %} btn-sm room-launch-btn" type="submit">
+                                {% if current_member and current_member.is_ready %}
+                                    <i class="bi bi-x-circle"></i> Unready
+                                {% else %}
+                                    <i class="bi bi-check2-circle"></i> Ready
+                                {% endif %}
+                            </button>
+                        </form>
+                    </div>
+                {% elif is_lobby %}
+                    <div class="room-launch-slot">
+                        <form method="post" action="/rooms/{{ room.room_id }}/join" class="mb-0">
+                            {% csrf_token %}
+                            <button class="btn btn-primary btn-sm room-launch-btn" type="submit">
+                                <i class="bi bi-box-arrow-in-right"></i> Join Room
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-3">
+                <span class="badge text-bg-light border">Players: {{ player_count }}/25</span>
+                {% if is_moderator %}
+                    <span class="badge text-bg-light border">Total: ${{ total_player_starting_balance }}</span>
+                {% endif %}
+                {% if is_lobby %}
+                    <span class="badge text-bg-light border">Min: {{ player_count }}/{{ launch_min_players }}</span>
+                    <span class="badge text-bg-light border">
+                        {% if all_joined_ready %}All Ready{% else %}Waiting on Ready{% endif %}
+                    </span>
+                    {% if dev_launch_override_active %}
+                        <span class="badge text-bg-info">DEV Min Override</span>
+                    {% endif %}
+                {% endif %}
+                {% if waitlist_count > 0 %}
+                    <span class="badge text-bg-light border">Waitlist: {{ waitlist_count }}</span>
+                {% endif %}
+                <span class="badge {% if can_launch %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                    {% if can_launch %}Launch Ready{% else %}Not Ready{% endif %}
+                </span>
+            </div>
+            {% if is_view_as_mode and not simulate_actions_enabled %}
+                <div class="small text-secondary mt-2">Read-only dev view as {{ viewing_user_label }}.</div>
+            {% elif is_view_as_mode and simulate_actions_enabled %}
+                <div class="small text-warning mt-2">Simulating actions as {{ viewing_user_label }} (dev mode).</div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    {% if actor_is_moderator and dev_mode_enabled and view_tabs %}
+        <div class="card hero-card mb-3">
+            <div class="card-body p-3 p-md-4">
+                <div class="small text-uppercase text-secondary mb-2">Dev View Tabs</div>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for tab in view_tabs %}
+                        <a href="{{ tab.href }}" class="btn btn-xs {% if tab.is_active %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                            {{ tab.label }}
+                        </a>
+                    {% endfor %}
+                </div>
+                {% if is_view_as_mode %}
+                    <div class="mt-2"></div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="card hero-card mb-3">
+                <div class="card-body p-3 p-md-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 id="roomMembersHeading" class="h6 mb-0">Members ({{ joined_count }})</h2>
+                        {% if is_moderator %}
+                            <form method="post" action="/rooms/{{ room.room_id }}/shuffle-roles" class="mb-0">
+                                {% csrf_token %}
+                                <button id="autoShuffleButton" class="btn btn-outline-primary btn-xs" type="submit">
+                                    <i id="autoShuffleIcon" class="bi bi-shuffle"></i>
+                                    <span id="autoShuffleLabel">
+                                        {% if is_lobby and is_joined %}
+                                            Shuffle {{ room_auto_shuffle_interval_seconds }}s
+                                        {% else %}
+                                            Shuffle
+                                        {% endif %}
+                                    </span>
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    {% if can_manage_dev_seats %}
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <form method="post" action="/rooms/{{ room.room_id }}/dev/add-seat" class="d-flex flex-wrap align-items-center gap-2 mb-0">
+                                {% csrf_token %}
+                                <input
+                                    class="form-control form-control-sm"
+                                    type="text"
+                                    name="seat_name"
+                                    maxlength="40"
+                                    placeholder="Dev Seat Name (optional)"
+                                >
+                                <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                <button class="btn btn-outline-dark btn-xs" type="submit">Add Dev Seat</button>
+                            </form>
+                            <span class="small text-secondary">Use tabs above to inspect each seat's perspective.</span>
+                        </div>
+                    {% endif %}
+                    <div id="roomMembersList">
+                        {% if moderator_member %}
+                            <div class="room-member-tile {% if moderator_member.membership_status != 'joined' %}room-member-tile-muted{% endif %}">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div class="fw-semibold">
+                                        {{ moderator_member.username }}
+                                        {% if moderator_member.user_id == current_user_id %}<span class="text-secondary small">(You)</span>{% endif %}
+                                        <span class="badge text-bg-dark">Moderator</span>
+                                    </div>
+                                </div>
+                                {% if is_moderator or moderator_member.user_id == current_user_id %}
+                                    <div class="small mt-1 room-role-money">
+                                        <div class="room-role-line">
+                                            <span class="text-secondary">Role:</span>
+                                            <span>Moderator</span>
+                                        </div>
+                                        <div class="room-money-line"><span class="text-secondary">-</span></div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {% if player_member_rows %}
+                            <hr class="my-2">
+                        {% endif %}
+
+                        {% for member in player_member_rows %}
+                            <div class="room-member-tile {% if member.membership_status != 'joined' %}room-member-tile-muted{% endif %}">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div>
+                                        <div class="fw-semibold">
+                                            {{ member.username }}
+                                            {% if member.user_id == current_user_id %}<span class="text-secondary small">(You)</span>{% endif %}
+                                            {% if member.user_id in dev_seat_user_ids %}
+                                                <span class="badge text-bg-info">Dev Seat</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1 justify-content-end">
+                                        <span class="badge text-bg-light border">{{ member.membership_status }}</span>
+                                        <span class="badge {% if member.is_ready %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                            {% if member.is_ready %}Ready{% else %}Not Ready{% endif %}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card hero-card">
+                <div class="card-body p-3 p-md-4">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                        <h2 class="h6 mb-0">Catalog ({{ catalog_items|length }})</h2>
+                    </div>
+                    <p class="small text-secondary mb-2">Current item states for all players.</p>
+
+                    <div id="catalogPanel" class="collapse show catalog-scroll-panel">
+                        {% if catalog_items %}
+                            {% for card in catalog_items %}
+                                {% if is_moderator or card.item.is_active %}
+                                    <div class="room-item-row">
+                                        <button
+                                            type="button"
+                                            class="room-item-open"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#catalogImageModal{{ card.index }}"
+                                            aria-label="View {{ card.item.display_name }} image"
+                                        >
+                                            <span class="room-item-idx">#{{ card.index }}</span>
+                                            {% if card.tile_image_path %}
+                                                <img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy">
+                                            {% else %}
+                                                <span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary">
+                                                    <i class="bi bi-image"></i>
+                                                </span>
+                                            {% endif %}
+                                            <span class="room-item-meta">
+                                                <span class="room-item-title-line">
+                                                    <span class="fw-semibold">{{ card.item.display_name }}</span>
+                                                </span>
+                                                <span class="small text-secondary">{{ card.classification_display_name }}</span>
+                                            </span>
+                                            {% if is_moderator %}
+                                                <span class="room-item-price">${{ card.item.base_price }}</span>
+                                            {% endif %}
+                                        </button>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-secondary mb-0">No catalog items yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const intervalMs = {{ room_state_poll_interval_seconds }} * 1000;
+    let inFlight = false;
+
+    const refreshRoomMembers = async () => {
+      if (document.hidden || inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("autojoin");
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+        if (response.redirected) {
+          window.location.href = response.url;
+          return;
+        }
+        if (!response.ok) {
+          return;
+        }
+
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const nextHeading = doc.getElementById("roomMembersHeading");
+        const nextList = doc.getElementById("roomMembersList");
+        const currentHeading = document.getElementById("roomMembersHeading");
+        const currentList = document.getElementById("roomMembersList");
+
+        if (nextHeading && currentHeading) {
+          currentHeading.textContent = nextHeading.textContent;
+        }
+        if (nextList && currentList) {
+          currentList.innerHTML = nextList.innerHTML;
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    window.refreshRoomMembers = refreshRoomMembers;
+    window.setInterval(refreshRoomMembers, intervalMs);
+    window.addEventListener("focus", refreshRoomMembers);
+  })();
+</script>
+{% if is_moderator and is_lobby and is_joined %}
+<script>
+  (() => {
+    const shuffleUrl = "/rooms/{{ room.room_id }}/shuffle-roles";
+    const csrfToken = "{{ csrf_token }}";
+    const roomId = "{{ room.room_id }}";
+    const intervalMs = {{ room_auto_shuffle_interval_seconds }} * 1000;
+    const storageKey = `roomAutoShuffleDueAt:${roomId}`;
+    const shuffleButton = document.getElementById("autoShuffleButton");
+    const shuffleIcon = document.getElementById("autoShuffleIcon");
+    const shuffleLabel = document.getElementById("autoShuffleLabel");
+    let inFlight = false;
+    let spinAnimation = null;
+
+    const nowMs = () => Date.now();
+    const readDueAt = () => Number(window.localStorage.getItem(storageKey) || "");
+    const writeDueAt = (ts) => window.localStorage.setItem(storageKey, String(ts));
+
+    let dueAtMs = readDueAt();
+    if (!Number.isFinite(dueAtMs) || dueAtMs <= nowMs()) {
+      dueAtMs = nowMs() + intervalMs;
+      writeDueAt(dueAtMs);
+    }
+
+    const startSpin = () => {
+      if (!shuffleIcon || spinAnimation) {
+        return;
+      }
+      spinAnimation = shuffleIcon.animate(
+        [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+        { duration: 700, iterations: Infinity }
+      );
+    };
+
+    const stopSpin = () => {
+      if (!spinAnimation) {
+        return;
+      }
+      spinAnimation.cancel();
+      spinAnimation = null;
+    };
+
+    const shuffleSilently = async () => {
+      if (document.hidden || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      if (shuffleButton) {
+        shuffleButton.disabled = true;
+      }
+      startSpin();
+      if (shuffleLabel) {
+        shuffleLabel.textContent = "Shuffling...";
+      }
+      try {
+        const response = await fetch(shuffleUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: "silent=true",
+          credentials: "same-origin"
+        });
+        dueAtMs = nowMs() + intervalMs;
+        writeDueAt(dueAtMs);
+        if (response.ok) {
+          if (typeof window.refreshRoomMembers === "function") {
+            await window.refreshRoomMembers();
+          }
+        }
+      } finally {
+        inFlight = false;
+        if (shuffleButton) {
+          shuffleButton.disabled = false;
+        }
+        stopSpin();
+      }
+    };
+
+    const formatCountdown = (ms) => `${Math.max(1, Math.ceil(ms / 1000))}s`;
+
+    const renderCountdown = (ms) => {
+      if (!shuffleLabel || inFlight) {
+        return;
+      }
+      shuffleLabel.textContent = `Shuffle ${formatCountdown(ms)}`;
+    };
+
+    renderCountdown(dueAtMs - nowMs());
+    window.setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
+      if (inFlight) {
+        return;
+      }
+
+      const remainingMs = dueAtMs - nowMs();
+      if (remainingMs <= 0) {
+        shuffleSilently();
+        return;
+      }
+      renderCountdown(remainingMs);
+    }, 1000);
+  })();
+</script>
+{% endif %}
+{% endblock %}
