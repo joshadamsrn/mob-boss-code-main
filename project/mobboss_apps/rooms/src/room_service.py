@@ -276,7 +276,7 @@ class RoomsService(RoomsInboundPort):
         else:
             start_command = _build_start_session_from_room_command(room)
             game_id = self._gameplay_inbound_port.start_session_from_room(start_command).game_id
-        updated = replace(room, status="in_progress")
+        updated = replace(room, status="in_progress", launched_game_id=game_id)
         self._repository.save_room(updated)
         return game_id
 

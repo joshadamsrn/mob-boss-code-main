@@ -275,6 +275,7 @@ class RoomDetailsSnapshot:
     opened_at_epoch_seconds: int
     members: list[RoomMemberSnapshot]
     items: list[RoomItemSnapshot]
+    launched_game_id: str | None = None
 
 
 def _require_non_empty(payload: dict, key: str) -> str:

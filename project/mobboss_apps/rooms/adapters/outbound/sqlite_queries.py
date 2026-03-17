@@ -18,7 +18,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             name TEXT NOT NULL,
             status TEXT NOT NULL,
             moderator_user_id TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            launched_game_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS room_members (
@@ -55,6 +56,10 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     columns = conn.execute("PRAGMA table_info(rooms)").fetchall()
     if "created_at" not in {row["name"] for row in columns}:
         conn.execute("ALTER TABLE rooms ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP")
+    if "launched_game_id" not in {row["name"] for row in columns}:
+        conn.execute("ALTER TABLE rooms ADD COLUMN launched_game_id TEXT")
+    if "launched_game_id" not in {row["name"] for row in columns}:
+        conn.execute("ALTER TABLE rooms ADD COLUMN launched_game_id TEXT")
     conn.commit()
 
 
@@ -62,13 +67,14 @@ def upsert_room(conn: sqlite3.Connection, room: dict[str, Any]) -> None:
     with conn:
         conn.execute(
             """
-            INSERT INTO rooms(room_id, name, status, moderator_user_id, created_at)
-            VALUES(?, ?, ?, ?, ?)
+            INSERT INTO rooms(room_id, name, status, moderator_user_id, created_at, launched_game_id)
+            VALUES(?, ?, ?, ?, ?, ?)
             ON CONFLICT(room_id) DO UPDATE SET
                 name=excluded.name,
                 status=excluded.status,
                 moderator_user_id=excluded.moderator_user_id,
-                created_at=excluded.created_at
+                created_at=excluded.created_at,
+                launched_game_id=excluded.launched_game_id
             """,
             (
                 room["room_id"],
@@ -76,6 +82,7 @@ def upsert_room(conn: sqlite3.Connection, room: dict[str, Any]) -> None:
                 room["status"],
                 room["moderator_user_id"],
                 room["created_at"],
+                room.get("launched_game_id"),
             ),
         )
         conn.execute("DELETE FROM room_members WHERE room_id = ?", (room["room_id"],))
@@ -121,7 +128,7 @@ def upsert_room(conn: sqlite3.Connection, room: dict[str, Any]) -> None:
 
 def get_room(conn: sqlite3.Connection, room_id: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT room_id, name, status, moderator_user_id, created_at FROM rooms WHERE room_id = ?",
+        "SELECT room_id, name, status, moderator_user_id, created_at, launched_game_id FROM rooms WHERE room_id = ?",
         (room_id,),
     ).fetchone()
     if row is None:
@@ -154,6 +161,8 @@ def get_room(conn: sqlite3.Connection, room_id: str) -> dict[str, Any] | None:
         "status": row["status"],
         "moderator_user_id": row["moderator_user_id"],
         "created_at": row["created_at"],
+        "launched_game_id": row["launched_game_id"],
+        "launched_game_id": row["launched_game_id"],
         "members": [
             {
                 "user_id": member["user_id"],

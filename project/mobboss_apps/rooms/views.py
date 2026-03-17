@@ -105,6 +105,7 @@ def create_room(request: HttpRequest) -> HttpResponse:
         return redirect("rooms-detail", room_id=room.room_id)
     except Exception as exc:
         messages.error(request, str(exc))
+        return redirect("web-lobby")
 
 
 @login_required(login_url="/auth/")
@@ -129,6 +130,13 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
             return redirect("web-lobby")
         joined_members = [member for member in room.members if member.membership_status == "joined"]
         actor_current_member = next((member for member in joined_members if member.user_id == actor_user_id), None)
+        if room.status == "in_progress":
+            if actor_current_member is None:
+                messages.info(request, "Game already in progress.")
+                return redirect("web-lobby")
+            if room.launched_game_id:
+                return redirect("gameplay-detail", game_id=room.launched_game_id)
+
 
         autojoin_requested = detail_dto.autojoin_requested
         if autojoin_requested and not actor_is_moderator and room.status == "lobby" and actor_current_member is None:

@@ -90,6 +90,7 @@ def _room_to_record(room: RoomDetailsSnapshot) -> dict:
             }
             for member in room.members
         ],
+        "launched_game_id": room.launched_game_id,
         "items": [
             {
                 "classification": item.classification,
@@ -100,6 +101,7 @@ def _room_to_record(room: RoomDetailsSnapshot) -> dict:
             }
             for item in room.items
         ],
+        "launched_game_id": room.launched_game_id,
     }
 
 
@@ -143,6 +145,7 @@ def _record_to_room(record: dict) -> RoomDetailsSnapshot:
         opened_at_epoch_seconds=_parse_created_at_epoch(record.get("created_at")),
         members=members,
         items=items,
+        launched_game_id=record.get("launched_game_id"),
     )
 
 
