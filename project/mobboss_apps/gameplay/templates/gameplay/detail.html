@@ -3,23 +3,199 @@
 {% block title %}Game | {{ page.game_id }}{% endblock %}
 
 {% block content %}
-<section class="container py-3 py-md-4">
+<section class="container page-shell py-3 py-md-4">
     <div class="card hero-card mb-3">
         <div class="card-body p-3 p-md-4">
-            <h1 class="h4 mb-1">Game {{ page.game_id }}</h1>
-            <div class="small text-secondary">Room: {{ page.room_id }}</div>
+            <h1 class="h4 mb-1 page-hero-title">Game</h1>
             <div class="d-flex flex-wrap gap-2 mt-3">
                 <span id="gamePhaseBadge" class="badge text-bg-light border">Phase: {{ page.phase }}</span>
                 <span id="gameStatusBadge" class="badge text-bg-light border">Status: {{ page.status }}</span>
                 <span id="gameRoundBadge" class="badge text-bg-light border">Round: {{ page.round_number }}</span>
-                <span id="gameVersionBadge" class="badge text-bg-light border">Version: {{ page.version }}</span>
+                {% if ghost_view_enabled %}
+                    <span class="badge text-bg-dark">Observer Status</span>
+                {% endif %}
             </div>
+            {% if page.is_moderator or page.is_ghost_view %}
+                <div
+                    id="policeMobKillTracker"
+                    class="small mt-2 {% if police_brutality_exceeded %}text-danger fw-semibold{% else %}text-secondary{% endif %}"
+                >
+                    Police Mob Kills : <span id="policeMobKillsValue">{{ police_mob_kills_count }}</span> / Allowed:
+                    <span id="policeMobKillsAllowed">{{ police_mob_kills_allowed }}</span>
+                </div>
+            {% endif %}
         </div>
     </div>
 
+    {% if actor_is_moderator and dev_mode_enabled and view_tabs %}
+        <div class="card hero-card mb-3">
+            <div class="card-body p-3 p-md-4">
+                <div class="small text-uppercase text-secondary mb-2">Dev View Tabs</div>
+                <div class="mobile-chip-row">
+                    {% for tab in view_tabs %}
+                        <a href="{{ tab.href }}" class="btn btn-xs {% if tab.is_active %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                            {{ tab.label }}
+                        </a>
+                    {% endfor %}
+                </div>
+                {% if is_view_as_mode %}
+                    <div class="mt-2">
+                        <a
+                            href="/games/{{ page.game_id }}/?as_user_id={{ current_user_id }}{% if not simulate_actions_enabled %}&simulate_actions=1{% endif %}"
+                            class="btn btn-xs {% if simulate_actions_enabled %}btn-outline-warning{% else %}btn-warning{% endif %}"
+                        >
+                            {% if simulate_actions_enabled %}Disable Simulate Actions{% else %}Enable Simulate Actions{% endif %}
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {% if viewed_role_name %}
+            <div class="card hero-card mb-3">
+                <div class="card-body p-3 p-md-4 text-center role-title-card">
+                    <div class="small text-uppercase text-secondary mb-1">Character Role</div>
+                    <div class="display-6 fw-semibold lh-1">{{ viewed_role_name }}</div>
+                    {% if viewed_role_image_url %}
+                        <div class="role-title-art mt-3">
+                            <img
+                                src="{{ viewed_role_image_url }}"
+                                alt="{{ viewed_role_name }} portrait"
+                                class="rounded border role-title-image"
+                                width="132"
+                                style="display:block;width:132px;max-width:100%;height:auto;object-fit:contain;margin:0 auto;"
+                            >
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+
+    {% if page.is_moderator or page.is_ghost_view or can_submit_accused_selection or can_view_accused_selection %}
+        {% include "gameplay/_moderator_accused_selection_card.html" with page=page %}
+    {% endif %}
+    {% include "gameplay/_moderator_trial_voting_card.html" with page=page %}
+    {% include "gameplay/_jury_voting_card.html" with page=page %}
+
+    <div id="gameMutationNotice" class="alert d-none py-2 px-3" role="status" aria-live="polite"></div>
+
+    {% if ghost_view_enabled %}
+        <div class="alert alert-dark py-2 px-3">
+            <div class="fw-semibold">Observer Status</div>
+            <div class="small">You are out of the round. Stay silent and keep this screen away from active players.</div>
+        </div>
+    {% endif %}
+
+    {% if is_murder_banner_notice %}
+        <div id="murderAlertBanner" class="alert alert-danger py-2 px-3 murder-flash-banner">{{ trial_result_notice }}</div>
+    {% elif trial_result_notice %}
+        <div class="alert alert-info py-2 px-3">{{ trial_result_notice }}</div>
+    {% endif %}
+    {% if private_trial_notice %}
+        <div class="alert alert-warning py-2 px-3">{{ private_trial_notice }}</div>
+    {% endif %}
+    {% if game_result_notice %}
+        <div class="alert alert-success py-2 px-3">{{ game_result_notice }}</div>
+    {% endif %}
+    <div id="protectiveCustodyPanel" class="alert alert-warning py-2 px-3 mb-3 {% if not protective_custody_panel.show %}d-none{% endif %}">
+        <div id="protectiveCustodyMessage">
+            <strong>{{ protective_custody_panel.target_username }}</strong> is under police protection.
+        </div>
+        <div class="small">
+            Time remaining:
+            <strong id="protectiveCustodyCountdownValue" data-custody-expiry-epoch="{{ protective_custody_panel.expires_at_epoch_seconds|default:'' }}">--</strong>
+        </div>
+    </div>
+    <div id="assetFreezePanel" class="alert alert-warning py-2 px-3 mb-3 {% if not asset_freeze_panel.show %}d-none{% endif %}">
+        <div id="assetFreezeMessage">
+            Law enforcement has frozen <strong>{{ asset_freeze_panel.target_username }}</strong>'s accounts for 10 minutes.
+        </div>
+        <div class="small">
+            Time remaining:
+            <strong id="assetFreezeCountdownValue" data-custody-expiry-epoch="{{ asset_freeze_panel.expires_at_epoch_seconds|default:'' }}">--</strong>
+        </div>
+    </div>
+    <div id="sergeantCapturePanel" class="alert alert-warning py-2 px-3 mb-3 {% if not sergeant_capture_panel.show %}d-none{% endif %}">
+        <div id="sergeantCaptureMessage">
+            <strong>{{ sergeant_capture_panel.target_username }}</strong> is in police custody.
+        </div>
+        <div class="small">
+            Time remaining:
+            <strong id="sergeantCaptureCountdownValue" data-custody-expiry-epoch="{{ sergeant_capture_panel.expires_at_epoch_seconds|default:'' }}">--</strong>
+        </div>
+    </div>
+    <div id="felonEscapePanel" class="alert alert-dark py-2 px-3 mb-3 {% if not felon_escape_panel.show %}d-none{% endif %}">
+        <div id="felonEscapeMessage">
+            {% if felon_escape_panel.viewer_is_target %}
+                You are in jail. Sit out until the timer ends. Do not talk to active players or look at their screens.
+            {% else %}
+                <strong>{{ felon_escape_panel.target_username }}</strong> is in jail and remains out until the timer ends.
+            {% endif %}
+        </div>
+        <div class="small">
+            Time remaining:
+            <strong id="felonEscapeCountdownValue" data-custody-expiry-epoch="{{ felon_escape_panel.expires_at_epoch_seconds|default:'' }}">--</strong>
+        </div>
+    </div>
+    {% if actor_is_moderator and moderator_latest_jury_usernames or ghost_view_enabled and moderator_latest_jury_usernames %}
+        <div class="alert alert-secondary py-2 px-3 mb-3">
+            <div class="fw-semibold mb-1">{% if ghost_view_enabled %}Most Recent Jury (Observer){% else %}Most Recent Jury (Moderator){% endif %}</div>
+            <ul class="small mb-0 ps-3">
+                {% for username in moderator_latest_jury_usernames %}
+                    <li>{{ username }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+    {% if mob_secret_word_panel.show %}
+        <div class="card hero-card mb-3">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h2 class="h6 mb-0">Secret Mob Word</h2>
+                    <span class="badge text-bg-light border">{{ mob_secret_word_panel.viewer_label }}</span>
+                </div>
+                <div class="small text-secondary mb-2">Press and hold to reveal the word.</div>
+                <div class="mobile-form-row mobile-secret-row">
+                    <div
+                        id="mobSecretWordField"
+                        class="secret-word-field"
+                        data-secret-word="{{ mob_secret_word_panel.secret_word }}"
+                        data-masked-word="********"
+                    >********</div>
+                    <button
+                        id="mobSecretWordReveal"
+                        type="button"
+                        class="btn btn-outline-dark btn-sm"
+                    >Hold to Reveal</button>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    {% if page.status == "ended" %}
+        <div class="mb-3">
+            <form method="post" action="/games/{{ page.game_id }}/exit" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-dark btn-sm">
+                    {% if actor_is_moderator %}Exit Game And Close Room{% else %}Exit Game{% endif %}
+                </button>
+            </form>
+        </div>
+    {% endif %}
+
+    {% include "gameplay/_merchant_inventory_card.html" with page=page %}
+    {% include "gameplay/_notifications_card.html" with viewer_notifications=viewer_notifications %}
+    {% include "gameplay/_superpower_card.html" with page=page superpower_panel=superpower_panel %}
+    {% include "gameplay/_player_wallet_card.html" with page=page %}
+
+    {% if can_self_report_murder %}
+        {% include "gameplay/_player_report_murdered_card.html" with page=page %}
+    {% endif %}
+
+    {% include "gameplay/_participants_card.html" with page=page participant_rows=page.participant_rows %}
+
     <div class="card hero-card mb-3">
         <div class="card-body p-3 p-md-4">
-            <h2 class="h6 mb-3">Game Plan</h2>
+            <h2 class="h6 mb-3">Phase Order</h2>
             <div id="gamePlanList" class="d-flex flex-column gap-2">
                 {% for step in game_plan_steps %}
                     <div data-phase="{{ step.phase }}" class="room-member-tile {% if page.phase == step.phase %}border border-dark{% endif %}">
@@ -35,38 +211,199 @@
             </div>
         </div>
     </div>
-
-    <div id="gameMutationNotice" class="alert d-none py-2 px-3" role="status" aria-live="polite"></div>
-
-    {% include "gameplay/_participants_card.html" with participant_rows=page.participant_rows %}
-
-    {% if page.is_moderator %}
-        {% include "gameplay/_moderator_accused_selection_card.html" with page=page %}
-    {% endif %}
-
-    {% if page.can_report_death %}
-        {% include "gameplay/_moderator_report_death_card.html" with page=page %}
-    {% endif %}
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script>
   (() => {
+    const isViewAsMode = {{ is_view_as_mode|yesno:"true,false" }};
+    const currentViewUserId = "{{ current_user_id|escapejs }}";
+    if (isViewAsMode && currentViewUserId) {
+      const forms = Array.from(document.querySelectorAll('form[method="post"][action^="/games/"]'));
+      forms.forEach((form) => {
+        let input = form.querySelector('input[name="as_user_id"]');
+        if (!input) {
+          input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "as_user_id";
+          form.appendChild(input);
+        }
+        input.value = currentViewUserId;
+      });
+    }
+
+    const secretWordField = document.getElementById("mobSecretWordField");
+    const secretWordReveal = document.getElementById("mobSecretWordReveal");
+    if (secretWordField && secretWordReveal) {
+      const maskedWord = secretWordField.dataset.maskedWord || "********";
+      const secretWord = secretWordField.dataset.secretWord || "";
+      const maskSecretWord = () => {
+        secretWordField.textContent = maskedWord;
+      };
+      const revealSecretWord = () => {
+        secretWordField.textContent = secretWord || maskedWord;
+      };
+      ["mousedown", "touchstart", "pointerdown"].forEach((eventName) => {
+        secretWordReveal.addEventListener(eventName, revealSecretWord);
+      });
+      ["mouseup", "mouseleave", "touchend", "touchcancel", "pointerup", "pointercancel", "blur"].forEach((eventName) => {
+        secretWordReveal.addEventListener(eventName, maskSecretWord);
+      });
+      secretWordReveal.addEventListener("contextmenu", (event) => event.preventDefault());
+    }
+  })();
+
+  (() => {
+    const revealNode = document.getElementById("lieutenantBriefcaseReveal");
+    if (!revealNode) {
+      return;
+    }
+    const visibleUntilEpoch = Number(revealNode.dataset.visibleUntilEpoch || "");
+    if (!Number.isFinite(visibleUntilEpoch) || visibleUntilEpoch <= 0) {
+      revealNode.classList.add("d-none");
+      return;
+    }
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const remainingMs = Math.max(0, (visibleUntilEpoch - nowEpoch) * 1000);
+    window.setTimeout(() => {
+      revealNode.classList.add("d-none");
+    }, remainingMs);
+  })();
+</script>
+<script>
+  (() => {
+    const revealNode = document.getElementById("sheriffJuryLogReveal");
+    if (!revealNode) {
+      return;
+    }
+    const visibleUntilEpoch = Number(revealNode.dataset.visibleUntilEpoch || "");
+    if (!Number.isFinite(visibleUntilEpoch) || visibleUntilEpoch <= 0) {
+      revealNode.classList.add("d-none");
+      return;
+    }
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const remainingMs = Math.max(0, (visibleUntilEpoch - nowEpoch) * 1000);
+    window.setTimeout(() => {
+      revealNode.classList.add("d-none");
+    }, remainingMs);
+  })();
+</script>
+<script>
+  (() => {
+    const revealNode = document.getElementById("detectiveInvestigationReveal");
+    if (!revealNode) {
+      return;
+    }
+    const visibleUntilEpoch = Number(revealNode.dataset.visibleUntilEpoch || "");
+    if (!Number.isFinite(visibleUntilEpoch) || visibleUntilEpoch <= 0) {
+      revealNode.classList.add("d-none");
+      return;
+    }
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const remainingMs = Math.max(0, (visibleUntilEpoch - nowEpoch) * 1000);
+    window.setTimeout(() => {
+      revealNode.classList.add("d-none");
+    }, remainingMs);
+  })();
+</script>
+<script>
+  (() => {
+    const revealNode = document.getElementById("inspectorRecordInspectionReveal");
+    if (!revealNode) {
+      return;
+    }
+    const visibleUntilEpoch = Number(revealNode.dataset.visibleUntilEpoch || "");
+    if (!Number.isFinite(visibleUntilEpoch) || visibleUntilEpoch <= 0) {
+      revealNode.classList.add("d-none");
+      return;
+    }
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const remainingMs = Math.max(0, (visibleUntilEpoch - nowEpoch) * 1000);
+    window.setTimeout(() => {
+      revealNode.classList.add("d-none");
+    }, remainingMs);
+  })();
+</script>
+<script>
+  (() => {
+    const countdownNodes = [
+      document.getElementById("protectiveCustodyCountdownValue"),
+      document.getElementById("deputyProtectiveCustodyCountdown"),
+      document.getElementById("assetFreezeCountdownValue"),
+      document.getElementById("captainAssetFreezeCountdown"),
+      document.getElementById("sergeantCaptureCountdownValue"),
+      document.getElementById("sergeantCaptureCountdown"),
+      document.getElementById("felonEscapeCountdownValue"),
+    ].filter((node) => !!node);
+    if (countdownNodes.length === 0) {
+      return;
+    }
+    const formatRemaining = (seconds) => {
+      const safeSeconds = Math.max(0, seconds);
+      const minutes = Math.floor(safeSeconds / 60);
+      const remainder = safeSeconds % 60;
+      return minutes > 0 ? `${minutes}m ${String(remainder).padStart(2, "0")}s` : `${remainder}s`;
+    };
+    const tick = () => {
+      const now = Math.floor(Date.now() / 1000);
+      let hasActiveNode = false;
+      countdownNodes.forEach((node) => {
+        const expiryEpoch = Number(node.dataset.custodyExpiryEpoch || "");
+        if (!Number.isFinite(expiryEpoch) || expiryEpoch <= 0) {
+          node.textContent = "--";
+          return;
+        }
+        const remaining = Math.max(0, expiryEpoch - now);
+        node.textContent = formatRemaining(remaining);
+        if (remaining > 0) {
+          hasActiveNode = true;
+        }
+      });
+      return hasActiveNode;
+    };
+    const timerId = window.setInterval(() => {
+      if (!tick()) {
+        return;
+      }
+    }, 500);
+    window.addEventListener("beforeunload", () => window.clearInterval(timerId));
+  })();
+</script>
+<script>
+  (() => {
     const pollIntervalMs = {{ game_state_poll_interval_seconds }} * 1000;
     const gameId = "{{ page.game_id }}";
-    const gameApiBase = `/gameplay/v1/games/${encodeURIComponent(gameId)}`;
+    const asUserId = "{{ current_user_id }}";
+    const isViewAsMode = {{ is_view_as_mode|yesno:"true,false" }};
+    const gameApiQuery = isViewAsMode && asUserId ? `?as_user_id=${encodeURIComponent(asUserId)}` : "";
+    const gameApiBase = `/gameplay/v1/games/${encodeURIComponent(gameId)}${gameApiQuery}`;
     const viewerUserId = "{{ page.viewer_user_id }}";
     const isModerator = {{ page.is_moderator|yesno:"true,false" }};
+    const ghostViewEnabled = {{ ghost_view_enabled|yesno:"true,false" }};
+    const hasModeratorStyleVisibility = isModerator || ghostViewEnabled;
     const csrfToken = "{{ csrf_token }}";
     const participantsContainer = document.getElementById("gameParticipantsList");
     const phaseBadge = document.getElementById("gamePhaseBadge");
     const statusBadge = document.getElementById("gameStatusBadge");
     const roundBadge = document.getElementById("gameRoundBadge");
-    const versionBadge = document.getElementById("gameVersionBadge");
     const planList = document.getElementById("gamePlanList");
     const pendingTrialPanel = document.getElementById("pendingTrialPanel");
     const mutationNotice = document.getElementById("gameMutationNotice");
+    const protectiveCustodyPanel = document.getElementById("protectiveCustodyPanel");
+    const protectiveCustodyMessage = document.getElementById("protectiveCustodyMessage");
+    const protectiveCustodyCountdownValue = document.getElementById("protectiveCustodyCountdownValue");
+    const assetFreezePanel = document.getElementById("assetFreezePanel");
+    const assetFreezeMessage = document.getElementById("assetFreezeMessage");
+    const assetFreezeCountdownValue = document.getElementById("assetFreezeCountdownValue");
+    const sergeantCapturePanel = document.getElementById("sergeantCapturePanel");
+    const sergeantCaptureMessage = document.getElementById("sergeantCaptureMessage");
+    const sergeantCaptureCountdownValue = document.getElementById("sergeantCaptureCountdownValue");
+    const felonEscapePanel = document.getElementById("felonEscapePanel");
+    const felonEscapeMessage = document.getElementById("felonEscapeMessage");
+    const felonEscapeCountdownValue = document.getElementById("felonEscapeCountdownValue");
+    const viewerNotificationsCard = document.getElementById("viewerNotificationsCard");
+    const viewerNotificationsList = document.getElementById("viewerNotificationsList");
     const reportDeathForm = document.getElementById("reportDeathForm");
     const advanceTimeoutForm = document.getElementById("advanceTimeoutForm");
     const expectedVersionInput = document.getElementById("expectedVersionInput");
@@ -75,11 +412,15 @@
     const murderedUserSelect = document.getElementById("murderedUserId");
     const reportDeathButton = document.getElementById("reportDeathButton");
     const advanceTimeoutButton = document.getElementById("advanceTimeoutButton");
+    const policeMobKillsValue = document.getElementById("policeMobKillsValue");
+    const policeMobKillsAllowed = document.getElementById("policeMobKillsAllowed");
+    const policeMobKillTracker = document.getElementById("policeMobKillTracker");
     let inFlight = false;
     let reportDeathInFlight = false;
     let manualAdvanceInFlight = false;
     let timeoutAdvanceInFlight = false;
     let currentSnapshot = null;
+    const participantNotesStorageKey = `game:${gameId}:participant-faction-notes:${viewerUserId}`;
 
     const escapeHtml = (value) => String(value)
       .replaceAll("&", "&amp;")
@@ -89,9 +430,87 @@
       .replaceAll("'", "&#39;");
 
     const lifeStateBadgeClass = (lifeState) => {
+      if (lifeState === "on_trial") return "text-bg-danger";
+      if (lifeState === "silenced") return "text-bg-dark";
       if (lifeState === "alive") return "text-bg-success";
       if (lifeState === "jailed") return "text-bg-warning";
       return "text-bg-secondary";
+    };
+
+    const statusLabel = (participant) => {
+      if (participant.status_label === "on_trial") {
+        return "On Trial";
+      }
+      if (participant.status_label === "silenced") {
+        return "Silenced";
+      }
+      return participant.life_state || "unknown";
+    };
+
+    const renderNotifications = (snapshot) => {
+      if (!viewerNotificationsCard || !viewerNotificationsList) {
+        return;
+      }
+      const notifications = snapshot && Array.isArray(snapshot.viewer_notifications) ? snapshot.viewer_notifications : [];
+      if (notifications.length === 0) {
+        viewerNotificationsCard.classList.add("d-none");
+        viewerNotificationsList.innerHTML = "";
+        return;
+      }
+      viewerNotificationsCard.classList.remove("d-none");
+      viewerNotificationsList.innerHTML = notifications.map((event) => `
+        <div class="room-member-tile">
+          <div class="small">${escapeHtml(event.message || "")}</div>
+        </div>
+      `).join("");
+    };
+
+    const renderProtectiveCustody = (snapshot) => {
+      if (!protectiveCustodyPanel || !protectiveCustodyMessage || !protectiveCustodyCountdownValue) {
+        return;
+      }
+      const custody = snapshot && snapshot.protective_custody ? snapshot.protective_custody : null;
+      if (!custody) {
+        protectiveCustodyPanel.classList.add("d-none");
+        protectiveCustodyCountdownValue.dataset.custodyExpiryEpoch = "";
+        return;
+      }
+      const targetUsername = escapeHtml(custody.target_username || "Unknown");
+      protectiveCustodyMessage.innerHTML = `<strong>${targetUsername}</strong> has been taken into protective custody by the police department for questioning.`;
+      protectiveCustodyCountdownValue.dataset.custodyExpiryEpoch = String(custody.expires_at_epoch_seconds || "");
+      protectiveCustodyPanel.classList.remove("d-none");
+    };
+
+    const renderAssetFreeze = (snapshot) => {
+      if (!assetFreezePanel || !assetFreezeMessage || !assetFreezeCountdownValue) {
+        return;
+      }
+      const freeze = snapshot && snapshot.asset_freeze ? snapshot.asset_freeze : null;
+      if (!freeze) {
+        assetFreezePanel.classList.add("d-none");
+        assetFreezeCountdownValue.dataset.custodyExpiryEpoch = "";
+        return;
+      }
+      const targetUsername = escapeHtml(freeze.target_username || "Unknown");
+      assetFreezeMessage.innerHTML = `Law enforcement has frozen <strong>${targetUsername}</strong>'s bank account for 10 minutes.`;
+      assetFreezeCountdownValue.dataset.custodyExpiryEpoch = String(freeze.expires_at_epoch_seconds || "");
+      assetFreezePanel.classList.remove("d-none");
+    };
+
+    const renderSergeantCapture = (snapshot) => {
+      if (!sergeantCapturePanel || !sergeantCaptureMessage || !sergeantCaptureCountdownValue) {
+        return;
+      }
+      const capture = snapshot && snapshot.sergeant_capture ? snapshot.sergeant_capture : null;
+      if (!capture) {
+        sergeantCapturePanel.classList.add("d-none");
+        sergeantCaptureCountdownValue.dataset.custodyExpiryEpoch = "";
+        return;
+      }
+      const targetUsername = escapeHtml(capture.target_username || "Unknown");
+      sergeantCaptureMessage.innerHTML = `<strong>${targetUsername}</strong> has been taken into custody by the police department for questioning.`;
+      sergeantCaptureCountdownValue.dataset.custodyExpiryEpoch = String(capture.expires_at_epoch_seconds || "");
+      sergeantCapturePanel.classList.remove("d-none");
     };
 
     const parseJsonSafely = async (response) => {
@@ -126,26 +545,198 @@
       return "Version conflict detected. State synced; retry manually.";
     };
 
-    const roleLabel = (participant) => {
+    const roleLabel = (participant, snapshot) => {
+      if (participant.role_name && participant.faction === "Merchant") {
+        return `Role: ${participant.role_name}`;
+      }
       if (participant.faction && participant.role_name) {
-        return `${participant.faction} / ${participant.role_name} (${participant.rank})`;
+        let label = `Faction: ${participant.faction} / Role: ${participant.role_name}`;
+        if (
+          snapshot
+          && snapshot.current_police_leader_user_id === participant.user_id
+          && participant.life_state === "alive"
+          && participant.role_name !== "Chief of Police"
+        ) {
+          label = `${label} [Acting Chief of Police]`;
+        }
+        if (
+          snapshot
+          && snapshot.current_mob_leader_user_id === participant.user_id
+          && participant.life_state === "alive"
+          && participant.role_name !== "Mob Boss"
+        ) {
+          label = `${label} [Mob Boss]`;
+        }
+        return label;
       }
       return "Hidden";
     };
 
-    const renderParticipants = (participants) => {
+    const noteButtonSvg = (factionGuess) => {
+      if (factionGuess === "Unknown") {
+        return `
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M9.7 9.2a2.3 2.3 0 0 1 4.6.1c0 1.1-.7 1.7-1.5 2.3-.8.5-1.3 1-1.3 1.9v.8" class="participant-note-icon-cutout"></path>
+            <circle cx="12" cy="17.8" r=".95" class="participant-note-icon-dot"></circle>
+          </svg>
+        `;
+      }
+      if (factionGuess === "Mob") {
+        return `
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M7.2 6.4 17.6 16.8M17.6 6.4 7.2 16.8" class="participant-note-icon-cutout"></path>
+          </svg>
+        `;
+      }
+      if (factionGuess === "Police") {
+        return `
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 2.5 7.2 4.4v4.2c0 4.1 1.9 7.8 4.8 10 2.9-2.2 4.8-5.9 4.8-10V4.4L12 2.5Z"></path>
+          </svg>
+        `;
+      }
+      return `
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M14.8 9.3h-4c-1.1 0-2 .8-2 1.8s.9 1.8 2 1.8h2.4c1.1 0 2 .8 2 1.8s-.9 1.8-2 1.8h-4M12 6.4v11.2" class="participant-note-icon-cutout"></path>
+        </svg>
+      `;
+    };
+
+    const noteButtonsMarkup = (userId) => ["Unknown", "Mob", "Police", "Merchant"].map((factionGuess) => `
+      <button type="button" class="participant-note-button" data-user-id="${escapeHtml(userId)}" data-faction-guess="${escapeHtml(factionGuess)}" aria-pressed="false" title="Guess ${escapeHtml(factionGuess)}">
+        <span class="participant-note-icon" aria-hidden="true">${noteButtonSvg(factionGuess)}</span>
+        <span>${escapeHtml(factionGuess)}</span>
+      </button>
+    `).join("");
+
+    const readParticipantNotes = () => {
+      try {
+        const raw = window.localStorage.getItem(participantNotesStorageKey);
+        if (!raw) {
+          return {};
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch (error) {
+        return {};
+      }
+    };
+
+    const normalizeParticipantNote = (rawNote) => {
+      if (rawNote && typeof rawNote === "object") {
+        const guess = String(rawNote.guess || "").trim() || "Unknown";
+        const tone = Number(rawNote.tone);
+        return {
+          guess,
+          tone: tone === 2 || tone === 3 ? tone : 1,
+        };
+      }
+      if (typeof rawNote === "string" && rawNote.trim()) {
+        return {
+          guess: rawNote.trim(),
+          tone: 1,
+        };
+      }
+      return {
+        guess: "Unknown",
+        tone: 1,
+      };
+    };
+
+    const writeParticipantNotes = (notes) => {
+      try {
+        window.localStorage.setItem(participantNotesStorageKey, JSON.stringify(notes));
+      } catch (error) {
+        // Ignore storage failures and keep the UI usable.
+      }
+    };
+
+    const applyParticipantNotes = () => {
       if (!participantsContainer) {
         return;
       }
+      const notes = readParticipantNotes();
+      participantsContainer.querySelectorAll(".participant-notes").forEach((section) => {
+        const userId = section.getAttribute("data-user-id") || "";
+        const selectedNote = normalizeParticipantNote(notes[userId]);
+        section.querySelectorAll(".participant-note-button").forEach((button) => {
+          const isSelected = button.getAttribute("data-faction-guess") === selectedNote.guess;
+          button.classList.toggle("is-selected", isSelected && selectedNote.tone === 1);
+          button.classList.toggle("is-selected-yellow", isSelected && selectedNote.tone === 2);
+          button.classList.toggle("is-selected-green", isSelected && selectedNote.tone === 3);
+          button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+        });
+      });
+    };
+
+    const renderParticipants = (snapshot) => {
+      if (!participantsContainer) {
+        return;
+      }
+      const participants = snapshot && Array.isArray(snapshot.participants) ? [...snapshot.participants] : [];
       if (!participants || participants.length === 0) {
         participantsContainer.innerHTML = '<div class="text-secondary">No participants found.</div>';
         return;
+      }
+      if (!hasModeratorStyleVisibility) {
+        participants.sort((left, right) => {
+          const leftIsSelf = left.user_id === viewerUserId;
+          const rightIsSelf = right.user_id === viewerUserId;
+          if (leftIsSelf !== rightIsSelf) {
+            return leftIsSelf ? -1 : 1;
+          }
+          return String(left.username || "").localeCompare(String(right.username || ""));
+        });
       }
 
       const blocks = participants.map((participant) => {
         const isSelf = participant.user_id === viewerUserId;
         const displayName = escapeHtml(participant.username);
-        const role = escapeHtml(roleLabel(participant));
+        const role = escapeHtml(roleLabel(participant, snapshot));
+        const inventory = Array.isArray(participant.inventory)
+          ? participant.inventory.map((item) => item.display_name).filter(Boolean).join(", ")
+          : "";
+        const inventoryText = inventory ? escapeHtml(inventory) : "None";
+        const jurorBadge = hasModeratorStyleVisibility && participant.is_juror ? '<span class="badge text-bg-info">Juror</span>' : "";
+        const moneyText = participant.money_balance !== undefined && participant.money_balance !== null
+          ? `$${escapeHtml(String(participant.money_balance))}`
+          : "Hidden";
+        const moneyLine = (hasModeratorStyleVisibility && participant.money_goal !== undefined && participant.money_goal !== null)
+          ? `Cash: ${moneyText} / Goal: $${escapeHtml(String(participant.money_goal))}`
+          : `Cash: ${moneyText}`;
+        const murderedByLine = (hasModeratorStyleVisibility && participant.life_state === "dead" && participant.murdered_by_username)
+          ? `<div class="text-danger">Murdered By: ${escapeHtml(participant.murdered_by_username)}</div>`
+          : "";
+        const accusedByLine = (hasModeratorStyleVisibility && participant.life_state === "jailed" && participant.accused_by_username)
+          ? `<div class="text-warning-emphasis">Accused By: ${escapeHtml(participant.accused_by_username)}</div>`
+          : "";
+        const convictedByLine = (hasModeratorStyleVisibility && participant.life_state === "jailed" && Array.isArray(participant.convicted_by_usernames) && participant.convicted_by_usernames.length > 0)
+          ? `<div class="text-warning-emphasis">Convicted By: ${escapeHtml(participant.convicted_by_usernames.join(", "))}</div>`
+          : "";
+        const moderatorDetails = hasModeratorStyleVisibility
+          ? `
+            <div class="small mt-1">
+              <div class="text-secondary">${moneyLine}</div>
+              <div class="text-secondary">Items in Inventory: ${inventoryText}</div>
+              ${murderedByLine}
+              ${accusedByLine}
+              ${convictedByLine}
+            </div>
+          `
+          : "";
+        const participantRoleOrNotes = (hasModeratorStyleVisibility || isSelf)
+          ? `<div class="small text-secondary mt-1">${role}</div>`
+          : `
+            <div class="participant-notes mt-2" data-user-id="${escapeHtml(participant.user_id)}">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                <div class="small text-secondary">Notes</div>
+                ${snapshot.status === "ended" && role !== "Hidden" ? `<div class="small text-secondary">${role}</div>` : ""}
+              </div>
+              <div class="participant-notes-options d-flex gap-2 flex-wrap">
+                ${noteButtonsMarkup(participant.user_id)}
+              </div>
+            </div>
+          `;
         return `
           <div class="room-member-tile mb-2">
             <div class="d-flex justify-content-between align-items-start gap-2">
@@ -153,14 +744,48 @@
                 ${displayName}
                 ${isSelf ? '<span class="text-secondary small">(You)</span>' : ""}
               </div>
-              <span class="badge ${lifeStateBadgeClass(participant.life_state)}">${escapeHtml(participant.life_state)}</span>
+              <div class="d-flex gap-1 align-items-center">
+                ${jurorBadge}
+                <span class="badge ${lifeStateBadgeClass(participant.status_label || participant.life_state)}">${escapeHtml(statusLabel(participant))}</span>
+              </div>
             </div>
-            <div class="small text-secondary mt-1">${role}</div>
+            ${participantRoleOrNotes}
+            ${moderatorDetails}
           </div>
         `;
       });
       participantsContainer.innerHTML = blocks.join("");
+      applyParticipantNotes();
     };
+
+    if (participantsContainer) {
+      participantsContainer.addEventListener("click", (event) => {
+        const button = event.target.closest(".participant-note-button");
+        if (!button) {
+          return;
+        }
+        const userId = button.getAttribute("data-user-id")
+          || button.closest(".participant-notes")?.getAttribute("data-user-id")
+          || "";
+        const factionGuess = button.getAttribute("data-faction-guess") || "";
+        if (!userId || !factionGuess) {
+          return;
+        }
+        const notes = readParticipantNotes();
+        const clickCount = Math.min(Math.max(Number(event.detail) || 1, 1), 3);
+        const currentNote = normalizeParticipantNote(notes[userId]);
+        notes[userId] = {
+          guess: factionGuess,
+          tone: clickCount,
+        };
+        if (factionGuess === "Unknown" && clickCount === 1 && currentNote.guess === "Unknown") {
+          delete notes[userId];
+        }
+        writeParticipantNotes(notes);
+        applyParticipantNotes();
+      });
+      applyParticipantNotes();
+    }
 
     const updatePlan = (phase) => {
       if (!planList) {
@@ -181,7 +806,7 @@
           if (header) {
             const badge = document.createElement("span");
             badge.className = "badge text-bg-dark";
-            badge.textContent = "Current";
+            badge.textContent = "Now";
             header.appendChild(badge);
           }
         }
@@ -201,7 +826,7 @@
         .filter((participant) => participant.life_state === "alive")
         .map((participant) => `<option value="${escapeHtml(participant.user_id)}">${escapeHtml(participant.username)}</option>`)
         .join("");
-      murderedUserSelect.innerHTML = `<option value="">Select participant</option>${aliveOptions}`;
+      murderedUserSelect.innerHTML = `<option value="">Choose player</option>${aliveOptions}`;
 
       if (reportDeathButton) {
         const canMutate = snapshot.status === "in_progress" && !snapshot.pending_trial;
@@ -216,7 +841,7 @@
       }
       const trial = snapshot.pending_trial;
       if (!trial) {
-        pendingTrialPanel.innerHTML = '<div class="small text-secondary">No pending trial.</div>';
+        pendingTrialPanel.innerHTML = '<div class="small text-secondary">No pending trial right now.</div>';
       } else {
         const currentResponder = trial.accused_selection_cursor && trial.accused_selection_cursor.length > 0
           ? trial.accused_selection_cursor[0]
@@ -243,19 +868,48 @@
       }
     };
 
+    const updatePoliceMobKillTracker = (snapshot) => {
+      if (!policeMobKillsValue || !policeMobKillsAllowed || !policeMobKillTracker) {
+        return;
+      }
+      const kills = Number(snapshot.police_mob_kills_count || 0);
+      const allowed = Number(snapshot.police_mob_kills_allowed || 0);
+      const exceeded = Boolean(snapshot.police_brutality_exceeded);
+      policeMobKillsValue.textContent = String(kills);
+      policeMobKillsAllowed.textContent = String(allowed);
+      policeMobKillTracker.classList.toggle("text-danger", exceeded);
+      policeMobKillTracker.classList.toggle("fw-semibold", exceeded);
+      policeMobKillTracker.classList.toggle("text-secondary", !exceeded);
+    };
+
     const applySnapshot = (data) => {
       if (!data) {
         return;
       }
+      const previousSnapshot = currentSnapshot;
       currentSnapshot = data;
       if (phaseBadge) phaseBadge.textContent = `Phase: ${data.phase}`;
       if (statusBadge) statusBadge.textContent = `Status: ${data.status}`;
       if (roundBadge) roundBadge.textContent = `Round: ${data.round_number}`;
-      if (versionBadge) versionBadge.textContent = `Version: ${data.version}`;
-      renderParticipants(data.participants || []);
+      updatePoliceMobKillTracker(data);
+      renderNotifications(data);
+      renderProtectiveCustody(data);
+      renderAssetFreeze(data);
+      renderSergeantCapture(data);
+      renderParticipants(data);
       updatePlan(data.phase);
       updateReportDeathControls(data);
       renderPendingTrial(data);
+
+      if (previousSnapshot && (
+        previousSnapshot.phase !== data.phase || previousSnapshot.status !== data.status
+      )) {
+        window.location.reload();
+        return;
+      }
+      if (!isModerator && previousSnapshot && previousSnapshot.version !== data.version) {
+        window.location.reload();
+      }
     };
 
     const fetchLatestSnapshot = async () => {
@@ -445,6 +1099,17 @@
 
     window.setInterval(refreshSnapshot, pollIntervalMs);
     window.addEventListener("focus", refreshSnapshot);
+  })();
+</script>
+<script>
+  (() => {
+    const banner = document.getElementById("murderAlertBanner");
+    if (!banner) {
+      return;
+    }
+    window.setTimeout(() => {
+      banner.classList.add("d-none");
+    }, 60000);
   })();
 </script>
 {% endblock %}

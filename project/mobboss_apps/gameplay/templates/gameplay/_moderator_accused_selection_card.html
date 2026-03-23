@@ -9,7 +9,7 @@
                     {% if page.pending_trial.current_responder_user_id %}
                         {{ page.pending_trial.current_responder_user_id }}
                     {% else %}
-                        none
+                        no one yet
                     {% endif %}
                 </div>
                 <div class="small text-secondary">
@@ -17,24 +17,34 @@
                     {% if page.pending_trial.accused_selection_deadline_epoch_seconds %}
                         {{ page.pending_trial.accused_selection_deadline_epoch_seconds }}
                     {% else %}
-                        none
+                        not set
                     {% endif %}
                 </div>
             {% else %}
-                <div class="small text-secondary">No pending trial.</div>
+                <div class="small text-secondary">No pending trial right now.</div>
             {% endif %}
         </div>
-        <form id="advanceTimeoutForm" method="post" action="/games/{{ page.game_id }}/advance-accused-selection-timeout" class="mt-3">
-            {% csrf_token %}
-            <input id="expectedVersionAdvanceInput" type="hidden" name="expected_version" value="{{ page.version }}">
-            <button
-                id="advanceTimeoutButton"
-                class="btn btn-outline-dark btn-sm w-100 w-sm-auto"
-                type="submit"
-                {% if page.phase != "accused_selection" or not page.pending_trial or not page.pending_trial.accused_selection_deadline_epoch_seconds %}disabled{% endif %}
-            >
-                Advance Accused Timeout
-            </button>
-        </form>
+        {% if page.is_ghost_view %}
+            <div class="alert alert-secondary py-2 px-3 mt-3 mb-0">Ghost View is informational only. Accused selection controls are moderator-only.</div>
+        {% elif can_submit_accused_selection %}
+            <form method="post" action="/games/{{ page.game_id }}/submit-accused-selection" class="mt-3">
+                {% csrf_token %}
+                <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                <input type="hidden" name="expected_version" value="{{ page.version }}">
+                <label for="accusedUserId">Accused Player</label>
+                <select id="accusedUserId" class="form-select form-select-sm" name="accused_user_id" required>
+                    <option value="">Choose player</option>
+                    {% for participant in accused_candidate_rows %}
+                        <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-primary btn-sm mt-3 w-100 w-sm-auto" type="submit">Lock In Accused Player</button>
+            </form>
+        {% elif can_view_accused_selection %}
+            <div class="alert alert-secondary py-2 px-3 mt-3 mb-0">
+                Waiting for the current Police responder to choose who goes on trial.
+            </div>
+        {% endif %}
     </div>
 </div>

@@ -7,7 +7,6 @@ from typing import Any
 from typing import cast
 
 from project.mobboss_apps.rooms.ports.internal import (
-    APPROVED_ITEM_CLASSIFICATIONS,
     FACTION_NAMES,
     ApprovedItemClassification,
     AssignRoomRoleCommand,
@@ -17,10 +16,12 @@ from project.mobboss_apps.rooms.ports.internal import (
     JoinRoomCommand,
     LeaveRoomCommand,
     LaunchGameFromRoomCommand,
+    SetMobSecretWordCommand,
     SetMemberBalanceCommand,
     SetRoomReadinessCommand,
     ShuffleRoomRolesCommand,
     UpsertRoomItemCommand,
+    is_supported_item_classification,
 )
 
 
@@ -271,6 +272,28 @@ class DeactivateRoomItemRequestDTO:
 
 
 @dataclass(frozen=True)
+class SetMobSecretWordRequestDTO:
+    room_id: str
+    moderator_user_id: str
+    secret_mob_word: str
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "SetMobSecretWordRequestDTO":
+        return cls(
+            room_id=_require_non_empty(payload, "room_id"),
+            moderator_user_id=_require_non_empty(payload, "moderator_user_id"),
+            secret_mob_word=_require_non_empty(payload, "secret_mob_word"),
+        )
+
+    def to_command(self) -> SetMobSecretWordCommand:
+        return SetMobSecretWordCommand(
+            room_id=self.room_id,
+            moderator_user_id=self.moderator_user_id,
+            secret_mob_word=self.secret_mob_word,
+        )
+
+
+@dataclass(frozen=True)
 class LaunchGameFromRoomRequestDTO:
     room_id: str
     requested_by_user_id: str
@@ -387,7 +410,7 @@ def _require_non_empty(payload: dict[str, Any], key: str) -> str:
 
 def _parse_item_classification(raw: Any, *, key: str) -> ApprovedItemClassification:
     value = str(raw if raw is not None else "").strip()
-    if value not in APPROVED_ITEM_CLASSIFICATIONS:
+    if not is_supported_item_classification(value):
         raise ValueError(f"Unsupported item classification: {value!r}")
     return cast(ApprovedItemClassification, value)
 
@@ -430,4 +453,3 @@ def _parse_method(raw: Any, *, key: str) -> str:
     if value not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
         raise ValueError(f"Field '{key}' has unsupported HTTP method: {value!r}")
     return value
-

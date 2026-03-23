@@ -13,8 +13,8 @@ urlpatterns = [
     path("<str:room_id>/catalog/<str:classification>", v1_views.CatalogItemUpsertView.as_view(), name="rooms-v1-catalog-item"),
     path("<str:room_id>/catalog/<str:classification>/image", v1_views.CatalogItemImageView.as_view(), name="rooms-v1-catalog-image"),
     path("<str:room_id>/catalog/<str:classification>/deactivate", v1_views.CatalogItemDeactivateView.as_view(), name="rooms-v1-catalog-deactivate"),
+    path("<str:room_id>/mob-secret-word", v1_views.SecretMobWordView.as_view(), name="rooms-v1-mob-secret-word"),
     path("<str:room_id>/launch", v1_views.LaunchGameView.as_view(), name="rooms-v1-launch"),
     path("<str:room_id>/shuffle-roles", v1_views.ShuffleRolesView.as_view(), name="rooms-v1-shuffle-roles"),
     path("<str:room_id>/delete", v1_views.DeleteRoomView.as_view(), name="rooms-v1-delete"),
 ]
-

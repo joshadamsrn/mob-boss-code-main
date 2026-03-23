@@ -5,20 +5,20 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Mob Boss{% endblock %}</title>
-    <meta name="description" content="Mob Boss game server and web experience.">
+    <meta name="description" content="Mob Boss multiplayer strategy game experience.">
     {% render_bundle 'web' 'css' %}
     {% block head_extra %}{% endblock %}
 </head>
-<body>
-<header class="sticky-top">
-    <nav class="navbar navbar-light bg-white border-bottom">
-        <div class="container py-2 d-flex justify-content-between align-items-center">
+<body class="app-shell">
+<header class="sticky-top app-topbar">
+    <nav class="navbar navbar-dark app-navbar">
+        <div class="container page-shell py-2 d-flex justify-content-between align-items-center">
             <a class="navbar-brand brand-mark" href="/">MOB BOSS</a>
             <div class="d-flex align-items-center gap-2">
                 {% if request.user.is_authenticated %}
                     <div class="dropdown">
                         <button
-                            class="btn btn-outline-dark btn-sm"
+                            class="btn btn-outline-dark btn-sm app-user-menu"
                             type="button"
                             data-bs-toggle="dropdown"
                             aria-expanded="false"
@@ -29,7 +29,10 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="/">Lobby</a></li>
-                            <li><a class="dropdown-item" href="/operations/">Operations</a></li>
+                            <li><a class="dropdown-item" href="/options/">Options</a></li>
+                            {% if request.session.active_game_id %}
+                                <li><a class="dropdown-item" href="/games/game-info/">Game Info</a></li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li>
                                 <form method="post" action="/auth/logout/" class="mb-0">
@@ -40,7 +43,7 @@
                         </ul>
                     </div>
                 {% else %}
-                    <a class="btn btn-dark btn-sm" href="/auth/">
+                    <a class="btn btn-outline-light btn-sm app-login-btn" href="/auth/">
                         <i class="bi bi-person"></i> Login
                     </a>
                 {% endif %}
@@ -49,9 +52,34 @@
     </nav>
 </header>
 
-<main>
+<main class="app-main">
     {% block content %}{% endblock %}
 </main>
+
+{% if request.user.is_authenticated %}
+    <nav class="app-bottom-nav d-md-none" aria-label="Primary">
+        <a href="/" class="app-bottom-tab{% if request.path == '/' %} is-active{% endif %}">
+            <i class="bi bi-grid-1x2-fill" aria-hidden="true"></i>
+            <span>Lobby</span>
+        </a>
+        {% if request.session.active_room_id %}
+            <a href="/rooms/{{ request.session.active_room_id }}/" class="app-bottom-tab{% if '/rooms/' in request.path %} is-active{% endif %}">
+                <i class="bi bi-people-fill" aria-hidden="true"></i>
+                <span>Room</span>
+            </a>
+        {% endif %}
+        {% if request.session.active_game_id %}
+            <a href="/games/{{ request.session.active_game_id }}/" class="app-bottom-tab{% if '/games/' in request.path %} is-active{% endif %}">
+                <i class="bi bi-controller" aria-hidden="true"></i>
+                <span>Game</span>
+            </a>
+        {% endif %}
+        <a href="/options/" class="app-bottom-tab{% if '/options/' in request.path %} is-active{% endif %}">
+            <i class="bi bi-sliders" aria-hidden="true"></i>
+            <span>Options</span>
+        </a>
+    </nav>
+{% endif %}
 
 {% if messages %}
     <div class="toast-container position-fixed bottom-0 end-0 p-3 me-3 mb-3" style="z-index: 1080;">

@@ -1,14 +1,64 @@
 {% extends "web/base.html" %}
 
 {% block title %}Room | {{ room.name }}{% endblock %}
+{% block head_extra %}
+<style>
+  #catalogPanel {
+    box-sizing: border-box;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+    width: 100%;
+    padding-right: 2.75rem;
+  }
+  .room-item-row {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+  .room-item-open {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    padding-right: 1.25rem;
+  }
+  .room-item-meta {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .room-item-title-line {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .room-item-price {
+    margin-left: 0;
+    max-width: min(40vw, 8rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #generatedSupplyRows {
+    padding-right: 2.75rem;
+  }
+  #generatedSupplyRows .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<section class="container py-3 py-md-4 room-shell">
+<section class="container page-shell py-3 py-md-4 room-shell">
     <div class="card hero-card room-summary-card mb-3">
         <div class="card-body p-3 p-md-4">
             <div class="room-summary-head {% if is_moderator or is_joined %}room-summary-head-has-launch{% endif %}">
                 <div class="room-title-block text-center">
-                    <h1 class="h4 mb-1">{{ room.name }}</h1>
+                    <h1 class="h4 mb-1 page-hero-title">{{ room.name }}</h1>
                     <p class="text-secondary mb-0 small">Moderator: {{ room.moderator_user_id }}</p>
                 </div>
                 {% if is_joined and not is_view_as_mode %}
@@ -82,13 +132,18 @@
                     <span class="badge text-bg-light border">Waitlist: {{ waitlist_count }}</span>
                 {% endif %}
                 <span class="badge {% if can_launch %}text-bg-success{% else %}text-bg-warning{% endif %}">
-                    {% if can_launch %}Launch Ready{% else %}Not Ready{% endif %}
+                    {% if can_launch %}Ready to Launch{% else %}Still Getting Ready{% endif %}
                 </span>
             </div>
             {% if is_view_as_mode and not simulate_actions_enabled %}
-                <div class="small text-secondary mt-2">Read-only dev view as {{ viewing_user_label }}.</div>
+                <div class="small text-secondary mt-2">Viewing as {{ viewing_user_label }} (read-only).</div>
             {% elif is_view_as_mode and simulate_actions_enabled %}
-                <div class="small text-warning mt-2">Simulating actions as {{ viewing_user_label }} (dev mode).</div>
+                <div class="small text-warning mt-2">You are simulating actions as {{ viewing_user_label }} (dev mode).</div>
+            {% endif %}
+            {% if actor_is_moderator and is_lobby and player_count == 0 %}
+                <div class="alert alert-info mt-3 mb-0 py-2">
+                    You are the moderator for this room. Set up central supply now. Item photos are optional and stock icons are available by default.
+                </div>
             {% endif %}
 
         </div>
@@ -149,7 +204,7 @@
                                 <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
                                 <button class="btn btn-outline-dark btn-xs" type="submit">Add Dev Seat</button>
                             </form>
-                            <span class="small text-secondary">Use tabs above to inspect each seat's perspective.</span>
+                            <span class="small text-secondary">Use the tabs above to switch between each seat's view.</span>
                         </div>
                     {% endif %}
                     <div id="roomMembersList">
@@ -218,12 +273,110 @@
                 </div>
             </div>
 
+            {% if actor_is_moderator and is_lobby and not is_view_as_mode %}
+                <div class="card hero-card mb-3">
+                    <div class="card-body p-3">
+                        <h2 class="h6 mb-2">Mob Secret Word</h2>
+                        <form method="post" action="/rooms/{{ room.room_id }}/set-mob-secret-word" class="border rounded p-2 mb-0">
+                            {% csrf_token %}
+                            <label class="form-label form-label-sm mb-1" for="secretMobWordInput">What is the secret word for the Mob?</label>
+                            <div class="d-flex flex-column flex-md-row gap-2">
+                                <input
+                                    id="secretMobWordInput"
+                                    {% if not room.secret_mob_word %}name="secret_mob_word"{% endif %}
+                                    class="form-control form-control-sm"
+                                    type="text"
+                                    maxlength="64"
+                                    required
+                                    value="{% if room.secret_mob_word %}********{% else %}{{ room.secret_mob_word }}{% endif %}"
+                                    {% if room.secret_mob_word %}
+                                    readonly
+                                    data-secret-word="{{ room.secret_mob_word }}"
+                                    {% endif %}
+                                    placeholder="Enter secret mob word"
+                                >
+                                <button
+                                    id="secretMobWordButton"
+                                    class="btn btn-outline-primary btn-sm"
+                                    type="button"
+                                >
+                                    {% if room.secret_mob_word %}View / Change Secret Word{% else %}Save Secret Word{% endif %}
+                                </button>
+                            </div>
+                            <div class="small text-secondary mt-1">
+                                {% if room.secret_mob_word %}
+                                    Secret word saved.
+                                {% else %}
+                                    Set this before you brief the Mob team.
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+
             <div class="card hero-card">
                 <div class="card-body p-3 p-md-4">
                     <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                         <h2 class="h6 mb-0">Catalog ({{ catalog_items|length }})</h2>
                     </div>
-                    <p class="small text-secondary mb-2">Current item states for all players.</p>
+                    <p class="small text-secondary mb-2">Items currently in Central Supply.</p>
+                    {% if actor_is_moderator and is_lobby and not is_view_as_mode %}
+                        <div class="alert alert-light border mb-3" id="centralSupplyWizardCard">
+                            <div class="fw-semibold mb-2" id="centralSupplyQuestionsHeading">Central Supply Build Questions</div>
+                            <div class="d-none mb-2" id="editCentralSupplyWrapper">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" id="editCentralSupplyButton">Edit Central Supply</button>
+                            </div>
+                            <div id="centralSupplyQuestions">
+                                <form id="centralSupplyWizardForm" class="d-flex flex-column gap-2">
+                                    <div>
+                                        <label class="form-label form-label-sm mb-1">How many players (excluding you) are you planning on?</label>
+                                        <input class="form-control form-control-sm" type="number" id="wizardPlayerCount" min="1" max="25" value="7" required>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="wizardIncludeSpecialty" checked>
+                                        <label class="form-check-label small" for="wizardIncludeSpecialty">
+                                            Add recommended specialty items (Bulletproof Vest and Escape From Jail)
+                                        </label>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-12 col-md-4">
+                                            <label class="form-label form-label-sm mb-1">How many Tier 1 guns (large, hard to conceal)?</label>
+                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="1" type="number" min="0" max="20" value="0">
+                                        </div>
+                                        <div class="col-12 col-md-4">
+                                            <label class="form-label form-label-sm mb-1">How many Tier 2 guns (medium size)?</label>
+                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="2" type="number" min="0" max="20" value="0">
+                                        </div>
+                                        <div class="col-12 col-md-4">
+                                            <label class="form-label form-label-sm mb-1">How many Tier 3 guns (small, easy to conceal)?</label>
+                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="3" type="number" min="0" max="20" value="0">
+                                        </div>
+                                    </div>
+                                    <div id="wizardGunDetails" class="d-flex flex-column gap-2"></div>
+                                    <div>
+                                        <label class="form-label form-label-sm mb-1">How many knives do you want to sell in central supply?</label>
+                                        <input class="form-control form-control-sm" type="number" id="wizardKnifeCount" min="0" max="20" value="0">
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-primary btn-sm" type="submit">Build Central Supply</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <hr class="my-3">
+                            <div id="generatedSupplySetup" class="d-none">
+                                <div class="fw-semibold mb-2">Central Supply Setup Card</div>
+                                <div class="small text-secondary mb-2">
+                                    Name, price, and optional photo are editable. Save each row to add it to central supply.
+                                </div>
+                                <div class="d-flex flex-column gap-2" id="generatedSupplyRows"></div>
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <button class="btn btn-success btn-sm" type="button" id="saveAllGeneratedRows">Save All</button>
+                                    <span class="small text-secondary" id="saveAllGeneratedRowsStatus"></span>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
 
                     <div id="catalogPanel" class="collapse show catalog-scroll-panel">
                         {% if catalog_items %}
@@ -249,7 +402,6 @@
                                                 <span class="room-item-title-line">
                                                     <span class="fw-semibold">{{ card.item.display_name }}</span>
                                                 </span>
-                                                <span class="small text-secondary">{{ card.classification_display_name }}</span>
                                             </span>
                                             {% if is_moderator %}
                                                 <span class="room-item-price">${{ card.item.base_price }}</span>
@@ -431,4 +583,391 @@
   })();
 </script>
 {% endif %}
+<script>
+  (() => {
+    const wizardForm = document.getElementById("centralSupplyWizardForm");
+    if (!wizardForm) {
+      return;
+    }
+
+    const csrfToken = "{{ csrf_token }}";
+    const roomId = "{{ room.room_id }}";
+    const wizardStateKey = `centralSupplyWizardState:${roomId}`;
+    const questionSection = document.getElementById("centralSupplyQuestions");
+    const questionHeading = document.getElementById("centralSupplyQuestionsHeading");
+    const editWrapper = document.getElementById("editCentralSupplyWrapper");
+    const editButton = document.getElementById("editCentralSupplyButton");
+    const gunDetailsContainer = document.getElementById("wizardGunDetails");
+    const generatedSetup = document.getElementById("generatedSupplySetup");
+    const generatedRows = document.getElementById("generatedSupplyRows");
+    const saveAllButton = document.getElementById("saveAllGeneratedRows");
+    const saveAllStatus = document.getElementById("saveAllGeneratedRowsStatus");
+    const tierCountInputs = Array.from(document.querySelectorAll(".wizard-tier-count"));
+    const secretWordInput = document.getElementById("secretMobWordInput");
+    const secretWordButton = document.getElementById("secretMobWordButton");
+    const secretWordForm = secretWordInput ? secretWordInput.closest("form") : null;
+
+    if (secretWordInput && secretWordButton && secretWordForm) {
+      let isMaskedSecret = secretWordInput.hasAttribute("data-secret-word");
+      secretWordButton.addEventListener("click", async () => {
+        if (isMaskedSecret) {
+          secretWordInput.value = secretWordInput.getAttribute("data-secret-word") || "";
+          secretWordInput.readOnly = false;
+          secretWordInput.setAttribute("name", "secret_mob_word");
+          secretWordInput.focus();
+          secretWordButton.textContent = "Save Secret Word";
+          isMaskedSecret = false;
+          return;
+        }
+
+        if (!secretWordInput.value.trim()) {
+          secretWordInput.reportValidity();
+          return;
+        }
+
+        secretWordButton.disabled = true;
+        try {
+          const response = await fetch(secretWordForm.action, {
+            method: "POST",
+            body: new FormData(secretWordForm),
+            credentials: "same-origin",
+            headers: {
+              "X-Requested-With": "XMLHttpRequest"
+            }
+          });
+          if (!response.ok) {
+            throw new Error("save_failed");
+          }
+          const savedValue = secretWordInput.value.trim();
+          secretWordInput.setAttribute("data-secret-word", savedValue);
+          secretWordInput.value = "********";
+          secretWordInput.readOnly = true;
+          secretWordInput.removeAttribute("name");
+          secretWordButton.textContent = "View / Change Secret Word";
+          isMaskedSecret = true;
+        } catch (error) {
+          secretWordForm.submit();
+          return;
+        } finally {
+          secretWordButton.disabled = false;
+        }
+      });
+    }
+
+    const roundToTen = (value) => {
+      const remainder = value % 10;
+      if (remainder >= 5) {
+        return value + (10 - remainder);
+      }
+      return value - remainder;
+    };
+
+    const clampCount = (raw) => Math.max(0, Math.min(20, Number.parseInt(raw || "0", 10) || 0));
+
+    const gunTierLabel = (tier) => {
+      if (tier === "1") return "Tier 1";
+      if (tier === "2") return "Tier 2";
+      return "Tier 3";
+    };
+
+    const setQuestionVisibility = (isVisible) => {
+      if (!questionSection || !editWrapper) {
+        return;
+      }
+      if (questionHeading) {
+        questionHeading.classList.toggle("d-none", !isVisible);
+      }
+      questionSection.classList.toggle("d-none", !isVisible);
+      editWrapper.classList.toggle("d-none", isVisible);
+    };
+
+    const loadWizardState = () => {
+      try {
+        const raw = window.localStorage.getItem(wizardStateKey);
+        if (!raw) {
+          return null;
+        }
+        return JSON.parse(raw);
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const readCurrentWizardState = () => {
+      const gunDetails = {};
+      const nameInputs = Array.from(document.querySelectorAll("[id^='gun_name_']"));
+      const shotsInputs = Array.from(document.querySelectorAll("[id^='gun_shots_']"));
+      nameInputs.forEach((input) => {
+        gunDetails[input.id] = input.value;
+      });
+      shotsInputs.forEach((input) => {
+        gunDetails[input.id] = input.value;
+      });
+      return {
+        playerCount: document.getElementById("wizardPlayerCount").value,
+        includeSpecialty: document.getElementById("wizardIncludeSpecialty").checked,
+        knifeCount: document.getElementById("wizardKnifeCount").value,
+        tierCounts: tierCountInputs.reduce((acc, input) => ({ ...acc, [String(input.dataset.tier || "")]: input.value }), {}),
+        gunDetails,
+      };
+    };
+
+    const persistWizardState = (patch = {}) => {
+      const nextState = { ...readCurrentWizardState(), ...patch };
+      window.localStorage.setItem(wizardStateKey, JSON.stringify(nextState));
+    };
+
+    const readExistingGunDetails = () => {
+      const existing = {};
+      const nameInputs = Array.from(document.querySelectorAll("[id^='gun_name_']"));
+      const shotsInputs = Array.from(document.querySelectorAll("[id^='gun_shots_']"));
+      nameInputs.forEach((input) => {
+        existing[input.id] = input.value;
+      });
+      shotsInputs.forEach((input) => {
+        existing[input.id] = input.value;
+      });
+      return existing;
+    };
+
+    const buildGunDetailInputs = (seedValues = {}) => {
+      const existingValues = readExistingGunDetails();
+      const sections = [];
+      for (const input of tierCountInputs) {
+        const tier = String(input.dataset.tier || "");
+        const count = clampCount(input.value);
+        if (count <= 0) {
+          continue;
+        }
+        const rows = [];
+        for (let i = 1; i <= count; i += 1) {
+          rows.push(`
+            <div class="row g-2">
+              <div class="col-12 col-md-7">
+                <label class="form-label form-label-sm mb-1">What do you want to call ${gunTierLabel(tier)} gun ${i}?</label>
+                <input class="form-control form-control-sm" type="text" id="gun_name_${tier}_${i}" value="${(existingValues[`gun_name_${tier}_${i}`] || seedValues[`gun_name_${tier}_${i}`] || `Tier ${tier} Gun ${i}`).replace(/"/g, '&quot;')}" required>
+              </div>
+              <div class="col-12 col-md-5">
+                <label class="form-label form-label-sm mb-1">How many shots does this gun allow?</label>
+                <input class="form-control form-control-sm" type="number" id="gun_shots_${tier}_${i}" min="1" value="${existingValues[`gun_shots_${tier}_${i}`] || seedValues[`gun_shots_${tier}_${i}`] || "1"}" required>
+              </div>
+            </div>
+          `);
+        }
+        sections.push(`
+          <div class="border rounded p-2">
+            <div class="small fw-semibold mb-2">${gunTierLabel(tier)} gun details</div>
+            ${rows.join("")}
+          </div>
+        `);
+      }
+      gunDetailsContainer.innerHTML = sections.join("");
+    };
+
+    const buildSupplyRows = () => {
+      const playerCount = Math.max(1, Math.min(25, Number.parseInt(document.getElementById("wizardPlayerCount").value || "7", 10) || 7));
+      const includeSpecialty = document.getElementById("wizardIncludeSpecialty").checked;
+      const knifeCount = clampCount(document.getElementById("wizardKnifeCount").value);
+      const totalMoney = playerCount * 100;
+
+      const prices = {
+        tier1: roundToTen(Math.round(totalMoney * 0.015)),
+        tier2: roundToTen(Math.round(totalMoney * 0.035)),
+        tier3: roundToTen(Math.round(totalMoney * 0.07)),
+        specialty: 500,
+      };
+
+      const rows = [];
+      if (includeSpecialty) {
+        rows.push({
+          classification: "bulletproof_vest",
+          displayName: "Bulletproof Vest",
+          price: prices.specialty,
+        });
+        rows.push({
+          classification: "escape_from_jail",
+          displayName: "Escape From Jail",
+          price: prices.specialty,
+        });
+      }
+
+      for (const tierInput of tierCountInputs) {
+        const tier = String(tierInput.dataset.tier || "");
+        const count = clampCount(tierInput.value);
+        const tierPrice = tier === "1" ? prices.tier1 : (tier === "2" ? prices.tier2 : prices.tier3);
+        for (let i = 1; i <= count; i += 1) {
+          const nameInput = document.getElementById(`gun_name_${tier}_${i}`);
+          const shotsInput = document.getElementById(`gun_shots_${tier}_${i}`);
+          const gunName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : `Tier ${tier} Gun ${i}`;
+          const shots = Math.max(1, Number.parseInt((shotsInput && shotsInput.value) || "1", 10) || 1);
+          rows.push({
+            classification: `gun_tier_${tier}_${i}`,
+            displayName: `${gunName} (${shots} shots)`,
+            price: tierPrice,
+          });
+        }
+      }
+
+      for (let i = 1; i <= knifeCount; i += 1) {
+        const knifePrice = roundToTen(Math.round(totalMoney * 0.12 * (1.5 ** (i - 1))));
+        rows.push({
+          classification: `knife_${i}`,
+          displayName: `Knife ${i}`,
+          price: knifePrice,
+        });
+      }
+
+      return rows;
+    };
+
+    const renderGeneratedRows = (rows) => {
+      if (!rows.length) {
+        generatedRows.innerHTML = `<div class="small text-secondary">No items generated yet. Update answers above and build again.</div>`;
+      } else {
+        generatedRows.innerHTML = rows.map((row) => `
+          <form method="post" action="/rooms/${roomId}/upsert-item" enctype="multipart/form-data" class="border rounded p-2 generated-supply-row-form">
+            <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+            <input type="hidden" name="classification" value="${row.classification}">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-md-4">
+                <label class="form-label form-label-sm mb-1">Name</label>
+                <input class="form-control form-control-sm" type="text" name="display_name" value="${row.displayName}" required>
+              </div>
+              <div class="col-12 col-md-2">
+                <label class="form-label form-label-sm mb-1">Price</label>
+                <input class="form-control form-control-sm" type="number" min="0" step="1" name="base_price" value="${row.price}" required>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label form-label-sm mb-1">Photo (optional)</label>
+                <input class="form-control form-control-sm" type="file" name="item_image" accept="image/*">
+              </div>
+              <div class="col-12 col-md-2 d-grid">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+              </div>
+            </div>
+          </form>
+        `).join("");
+      }
+      generatedSetup.classList.remove("d-none");
+      if (saveAllStatus) {
+        saveAllStatus.textContent = "";
+      }
+    };
+
+    tierCountInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        buildGunDetailInputs();
+        persistWizardState();
+      });
+      input.addEventListener("input", () => {
+        buildGunDetailInputs();
+        persistWizardState();
+      });
+    });
+    const playerCountInput = document.getElementById("wizardPlayerCount");
+    const includeSpecialtyInput = document.getElementById("wizardIncludeSpecialty");
+    const knifeCountInput = document.getElementById("wizardKnifeCount");
+    [playerCountInput, includeSpecialtyInput, knifeCountInput].forEach((input) => {
+      if (!input) {
+        return;
+      }
+      input.addEventListener("change", () => persistWizardState());
+      input.addEventListener("input", () => persistWizardState());
+    });
+    gunDetailsContainer.addEventListener("input", () => persistWizardState());
+    gunDetailsContainer.addEventListener("change", () => persistWizardState());
+
+    const restoreState = loadWizardState();
+    if (restoreState) {
+      if (playerCountInput && restoreState.playerCount != null) {
+        playerCountInput.value = String(restoreState.playerCount);
+      }
+      if (includeSpecialtyInput && typeof restoreState.includeSpecialty === "boolean") {
+        includeSpecialtyInput.checked = restoreState.includeSpecialty;
+      }
+      if (knifeCountInput && restoreState.knifeCount != null) {
+        knifeCountInput.value = String(restoreState.knifeCount);
+      }
+      tierCountInputs.forEach((input) => {
+        const tier = String(input.dataset.tier || "");
+        if (restoreState.tierCounts && restoreState.tierCounts[tier] != null) {
+          input.value = String(restoreState.tierCounts[tier]);
+        }
+      });
+      buildGunDetailInputs(restoreState.gunDetails || {});
+      if (restoreState.rows && Array.isArray(restoreState.rows) && !restoreState.savedAll) {
+        renderGeneratedRows(restoreState.rows);
+      }
+      if (restoreState.savedAll) {
+        generatedSetup.classList.add("d-none");
+      }
+      if (restoreState.built || restoreState.savedAll) {
+        setQuestionVisibility(false);
+      }
+    } else {
+      buildGunDetailInputs();
+    }
+
+    wizardForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const rows = buildSupplyRows();
+      renderGeneratedRows(rows);
+      persistWizardState({ rows, built: true, savedAll: false });
+      setQuestionVisibility(false);
+    });
+
+    if (editButton) {
+      editButton.addEventListener("click", () => {
+        const state = loadWizardState();
+        if (state && state.rows && Array.isArray(state.rows)) {
+          renderGeneratedRows(state.rows);
+        }
+        setQuestionVisibility(true);
+        persistWizardState({ built: false, savedAll: false });
+      });
+    }
+
+    if (saveAllButton) {
+      saveAllButton.addEventListener("click", async () => {
+        const forms = Array.from(document.querySelectorAll(".generated-supply-row-form"));
+        if (!forms.length) {
+          if (saveAllStatus) {
+            saveAllStatus.textContent = "No generated rows to save.";
+          }
+          return;
+        }
+
+        saveAllButton.disabled = true;
+        if (saveAllStatus) {
+          saveAllStatus.textContent = `Saving ${forms.length} items...`;
+        }
+        try {
+          let savedCount = 0;
+          for (const form of forms) {
+            const response = await fetch(form.action, {
+              method: "POST",
+              body: new FormData(form),
+              credentials: "same-origin",
+            });
+            if (!response.ok) {
+              throw new Error(`Failed while saving item ${savedCount + 1}.`);
+            }
+            savedCount += 1;
+          }
+          if (saveAllStatus) {
+            saveAllStatus.textContent = `Saved ${savedCount} items. Refreshing...`;
+          }
+          persistWizardState({ built: true, savedAll: true });
+          window.location.reload();
+        } catch (error) {
+          if (saveAllStatus) {
+            saveAllStatus.textContent = (error && error.message) ? error.message : "Save All failed.";
+          }
+        } finally {
+          saveAllButton.disabled = false;
+        }
+      });
+    }
+  })();
+</script>
 {% endblock %}

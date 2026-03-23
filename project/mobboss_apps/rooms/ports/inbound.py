@@ -14,6 +14,7 @@ from project.mobboss_apps.rooms.ports.internal import (
     LaunchGameFromRoomCommand,
     RoomDetailsSnapshot,
     RoomSnapshot,
+    SetMobSecretWordCommand,
     SetMemberBalanceCommand,
     SetRoomReadinessCommand,
     ShuffleRoomRolesCommand,
@@ -52,6 +53,9 @@ class RoomsInboundPort(Protocol):
     def deactivate_room_item(self, command: DeactivateRoomItemCommand) -> RoomDetailsSnapshot:
         ...
 
+    def set_mob_secret_word(self, command: SetMobSecretWordCommand) -> RoomDetailsSnapshot:
+        ...
+
     def launch_game_from_room(self, command: LaunchGameFromRoomCommand) -> str:
         """Return a newly created game_id."""
         ...
@@ -61,4 +65,3 @@ class RoomsInboundPort(Protocol):
 
     def shuffle_room_roles(self, command: ShuffleRoomRolesCommand) -> RoomDetailsSnapshot:
         ...
-

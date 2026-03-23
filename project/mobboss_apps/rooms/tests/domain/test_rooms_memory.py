@@ -26,12 +26,14 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
     LaunchGameFromRoomCommand,
     MIN_REQUIRED_ROOM_ITEMS,
     REQUIRED_ROOM_ITEM_CLASSIFICATIONS,
+    SetMobSecretWordCommand,
     SetMemberBalanceCommand,
     SetRoomReadinessCommand,
     ShuffleRoomRolesCommand,
     UpsertRoomItemCommand,
 )
 from project.mobboss_apps.rooms.src.room_service import (  # noqa: E402
+    MAX_ROOM_PLAYERS,
     RoomsService,
     minimum_launch_starting_balance,
 )
@@ -76,7 +78,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.room_id = room.room_id
 
     def test_minimum_launch_starting_balance_is_seven_player_baseline(self) -> None:
-        self.assertEqual(minimum_launch_starting_balance(), 1900)
+        self.assertEqual(minimum_launch_starting_balance(), 730)
 
     def test_creator_becomes_moderator_and_joined_member(self) -> None:
         details = self.service.get_room_details(self.room_id)
@@ -85,7 +87,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertEqual(len(details.members), 1)
         self.assertEqual(details.members[0].membership_status, "joined")
         self.assertIsNone(details.members[0].assigned_role)
-        self.assertGreaterEqual(len(details.items), MIN_REQUIRED_ROOM_ITEMS)
+        self.assertEqual(len(details.items), MIN_REQUIRED_ROOM_ITEMS)
         required = {item.classification for item in details.items if item.classification in REQUIRED_ROOM_ITEM_CLASSIFICATIONS}
         self.assertEqual(required, set(REQUIRED_ROOM_ITEM_CLASSIFICATIONS))
 
@@ -107,6 +109,20 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertEqual(factions.count("Mob"), 3)
         self.assertEqual(factions.count("Merchant"), 1)
 
+    def test_required_role_titles_are_always_present_for_seven_player_game(self) -> None:
+        _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
+
+        details = self.service.get_room_details(self.room_id)
+        role_names = {
+            member.assigned_role.role_name
+            for member in details.members
+            if member.membership_status == "joined" and member.assigned_role is not None
+        }
+        self.assertIn("Chief of Police", role_names)
+        self.assertIn("Mob Boss", role_names)
+        self.assertIn("Knife Hobo", role_names)
+        self.assertIn("Merchant", role_names)
+
     def test_only_moderator_can_assign_role(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_1", username="p1"))
 
@@ -117,7 +133,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
                     moderator_user_id="u_1",
                     target_user_id="u_1",
                     faction="Police",
-                    role_name="Police Deputy",
+                    role_name="Deputy",
                     rank=2,
                 )
             )
@@ -129,7 +145,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
                     moderator_user_id="u_mod",
                     target_user_id="u_mod",
                     faction="Police",
-                    role_name="Police Chief",
+                    role_name="Chief of Police",
                     rank=1,
                 )
             )
@@ -140,13 +156,13 @@ class RoomMemoryServiceTests(unittest.TestCase):
                 moderator_user_id="u_mod",
                 target_user_id="u_1",
                 faction="Police",
-                role_name="Police Deputy",
+                role_name="Deputy",
                 rank=2,
             )
         )
         member = next(m for m in details.members if m.user_id == "u_1")
         assert member.assigned_role is not None
-        self.assertEqual(member.assigned_role.role_name, "Police Deputy")
+        self.assertEqual(member.assigned_role.role_name, "Deputy")
 
     def test_moderator_sets_member_balance_with_nearest_ten_rounding(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_2", username="p2"))
@@ -297,6 +313,66 @@ class RoomMemoryServiceTests(unittest.TestCase):
                 )
             )
 
+    def test_join_rejects_new_player_when_room_is_full(self) -> None:
+        for idx in range(1, MAX_ROOM_PLAYERS + 1):
+            self.service.join_room(
+                JoinRoomCommand(
+                    room_id=self.room_id,
+                    user_id=f"u_{idx}",
+                    username=f"p{idx}",
+                )
+            )
+
+        with self.assertRaises(ValueError) as ctx:
+            self.service.join_room(
+                JoinRoomCommand(
+                    room_id=self.room_id,
+                    user_id="u_overflow",
+                    username="overflow",
+                )
+            )
+
+        self.assertEqual(str(ctx.exception), "Room is full.")
+        details = self.service.get_room_details(self.room_id)
+        joined_players = [
+            member
+            for member in details.members
+            if member.membership_status == "joined" and member.user_id != details.moderator_user_id
+        ]
+        self.assertEqual(len(joined_players), MAX_ROOM_PLAYERS)
+
+    def test_moderator_can_set_secret_mob_word(self) -> None:
+        details = self.service.set_mob_secret_word(
+            SetMobSecretWordCommand(
+                room_id=self.room_id,
+                moderator_user_id="u_mod",
+                secret_mob_word="RAVEN",
+            )
+        )
+        self.assertEqual(details.secret_mob_word, "RAVEN")
+
+    def test_only_moderator_can_set_secret_mob_word(self) -> None:
+        self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_3", username="p3"))
+
+        with self.assertRaises(PermissionError):
+            self.service.set_mob_secret_word(
+                SetMobSecretWordCommand(
+                    room_id=self.room_id,
+                    moderator_user_id="u_3",
+                    secret_mob_word="OWL",
+                )
+            )
+
+    def test_secret_mob_word_rejects_blank_values(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.set_mob_secret_word(
+                SetMobSecretWordCommand(
+                    room_id=self.room_id,
+                    moderator_user_id="u_mod",
+                    secret_mob_word="   ",
+                )
+            )
+
     def test_launch_requires_moderator_and_min_joined_members(self) -> None:
         _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_6.json")
 
@@ -360,6 +436,83 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertEqual(len(start_command.participants), 7)
         self.assertGreaterEqual(len(start_command.catalog), MIN_REQUIRED_ROOM_ITEMS)
         self.assertEqual(service.get_room_details(room.room_id).status, "in_progress")
+
+    def test_launch_applies_player_count_pricing_and_preserves_manual_override(self) -> None:
+        repo = MemoryRoomsRepository()
+        gameplay = _StubGameplayInboundPort(game_id="game-r-price")
+        service = RoomsService(repo, gameplay_inbound_port=gameplay)
+        room = service.create_room(
+            CreateRoomCommand(name="Pricing Room", creator_user_id="u_mod", creator_username="mod")
+        )
+        _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
+
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="gun_tier_1",
+                display_name="Handgun (Tier 1)",
+                base_price=999,
+            )
+        )
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="gun_tier_2",
+                display_name="Pistol (Tier 2)",
+                base_price=100,
+            )
+        )
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="gun_tier_3",
+                display_name="Revolver (Tier 3)",
+                base_price=100,
+            )
+        )
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="bulletproof_vest",
+                display_name="Bulletproof Vest",
+                base_price=100,
+            )
+        )
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="escape_from_jail",
+                display_name="Escape From Jail",
+                base_price=100,
+            )
+        )
+        service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="knife_1",
+                display_name="Knife 1",
+                base_price=100,
+            )
+        )
+
+        service.launch_game_from_room(
+            LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
+        )
+        start_command = gameplay.commands[0]
+        price_by_classification = {item.classification: item.base_price for item in start_command.catalog}
+
+        self.assertEqual(price_by_classification["gun_tier_1"], 1000)
+        self.assertEqual(price_by_classification["gun_tier_2"], 20)
+        self.assertEqual(price_by_classification["gun_tier_3"], 50)
+        self.assertEqual(price_by_classification["bulletproof_vest"], 40)
+        self.assertEqual(price_by_classification["escape_from_jail"], 40)
+        self.assertEqual(price_by_classification["knife_1"], 80)
 
     def test_only_moderator_can_delete_room(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_6", username="p6"))

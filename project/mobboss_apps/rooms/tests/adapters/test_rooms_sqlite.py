@@ -21,12 +21,13 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
     LeaveRoomCommand,
     MIN_REQUIRED_ROOM_ITEMS,
     REQUIRED_ROOM_ITEM_CLASSIFICATIONS,
+    SetMobSecretWordCommand,
 )
 from project.mobboss_apps.rooms.src.room_service import RoomsService  # noqa: E402
 
 
 class RoomSqliteServiceTests(unittest.TestCase):
-    def test_create_room_preloads_required_catalog_items(self) -> None:
+    def test_create_room_starts_with_empty_catalog(self) -> None:
         tmp_dir = TMP_ROOT
         tmp_dir.mkdir(parents=True, exist_ok=True)
         db_path = tmp_dir / "rooms_required_items_test.sqlite3"
@@ -40,7 +41,7 @@ class RoomSqliteServiceTests(unittest.TestCase):
         )
         details = service.get_room_details(room_summary.room_id)
 
-        self.assertGreaterEqual(len(details.items), MIN_REQUIRED_ROOM_ITEMS)
+        self.assertEqual(len(details.items), MIN_REQUIRED_ROOM_ITEMS)
         required = {item.classification for item in details.items if item.classification in REQUIRED_ROOM_ITEM_CLASSIFICATIONS}
         self.assertEqual(required, set(REQUIRED_ROOM_ITEM_CLASSIFICATIONS))
 
@@ -69,6 +70,36 @@ class RoomSqliteServiceTests(unittest.TestCase):
 
         service_2.delete_room(DeleteRoomCommand(room_id=room_summary.room_id, requested_by_user_id="u_mod"))
         self.assertEqual(service_2.list_active_rooms(), [])
+
+        repo_1.close()
+        repo_2.close()
+        if db_path.exists():
+            db_path.unlink()
+
+    def test_secret_mob_word_persists_across_repository_instances(self) -> None:
+        tmp_dir = TMP_ROOT
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        db_path = tmp_dir / "rooms_secret_mob_word_test.sqlite3"
+        if db_path.exists():
+            db_path.unlink()
+
+        repo_1 = SqliteRoomsRepository(db_path=str(db_path))
+        service_1 = RoomsService(repo_1)
+        room_summary = service_1.create_room(
+            CreateRoomCommand(name="SQLite Secret Room", creator_user_id="u_mod", creator_username="mod")
+        )
+        service_1.set_mob_secret_word(
+            SetMobSecretWordCommand(
+                room_id=room_summary.room_id,
+                moderator_user_id="u_mod",
+                secret_mob_word="RAVEN",
+            )
+        )
+
+        repo_2 = SqliteRoomsRepository(db_path=str(db_path))
+        service_2 = RoomsService(repo_2)
+        details = service_2.get_room_details(room_summary.room_id)
+        self.assertEqual(details.secret_mob_word, "RAVEN")
 
         repo_1.close()
         repo_2.close()

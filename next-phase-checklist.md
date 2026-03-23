@@ -231,13 +231,21 @@ DeadPlayerGameView
 - [x] Add moderator-only controls needed for initial death reporting flow.
 - [x] Preserve mobile-first behavior and avoid hidden-role leakage in HTML payloads.
 - [x] Use one shared frontend helper for all versioned gameplay mutations (strict-manual retry policy).
+- [x] Add generic role-ability card surface for alive participants.
+- [x] Refactor role-ability copy/metadata into a centralized table in `gameplay/views.py`.
+- [x] Replace generic fallback text with role-specific placeholder detail blocks for non-powered roles.
+- [x] Build a role-by-role implementation matrix for placeholder cards (authoritative next planning step).
+- [x] Decide which placeholder roles remain passive-only summaries vs which get future activated powers.
+- [x] Record the current authority that remaining placeholder roles stay passive-only until a feature spec defines a new power.
 
 ### 6) Economy + Transfer Hooks (Stub Then Harden)
 
-- [ ] Introduce ledger entry model in gameplay/economy boundary.
-- [ ] Add stubbed transfer functions for murder/no-trial routing.
-- [ ] Add EFJ and vest hook points without full implementation coupling.
-- [ ] Add reconciliation helper (`money cannot leave economy`) and checksum scaffold.
+- [x] Introduce ledger entry model in gameplay/economy boundary.
+- [x] Add stubbed transfer functions for murder/no-trial routing.
+- [x] Add EFJ hook points without full implementation coupling.
+- [x] Add vest hook points without full implementation coupling.
+- [x] Require attack type on murder reports and broadcast weapon display name in public murder notices.
+- [x] Add reconciliation helper (`money cannot leave economy`) and checksum scaffold.
 
 ### 7) Testing (Required for Merge)
 
@@ -253,9 +261,10 @@ DeadPlayerGameView
 
 - [x] Add `documentation/features/feature_game_session_start.md` (new authoritative feature spec).
 - [x] Update `feature_game_flow.md` if behavior changed during implementation.
-- [ ] Add sequence diagrams for launch handoff and death-report flow.
-- [ ] Add operations notes for monitoring game session lifecycle and stuck-phase detection.
-- [ ] Track unresolved rules in `documentation/discussion/planning_and_execution/open_discussion.md`.
+- [x] Add sequence diagrams for launch handoff and death-report flow.
+- [x] Add operations notes for monitoring game session lifecycle and stuck-phase detection.
+- [x] Track unresolved rules in `documentation/discussion/planning_and_execution/open_discussion.md`.
+- [x] Update authoritative planning docs with a role-ability implementation matrix once decisions are made.
 
 ## Parallelization Notes
 
@@ -273,3 +282,133 @@ DeadPlayerGameView
 - Web Owner: `[x]` Codex (dev-playtest UI + gameplay launch redirect shell + polling)
 - Tests Owner: `[x]` Codex (dev launch override + handoff/domain + gameplay API/conflict tests)
 - Docs/Ops Owner: `[~]` Codex (checklist + decisions updates)
+
+## Current Pickup Point
+
+- Vest/EFJ/report-death gameplay work is complete enough for continued playtest iteration.
+- Generic role-ability UI now exists for alive participants:
+  - actionable cards are live for `Don`, `Under Boss`, `Kingpin`, `Deputy`, `Sheriff`, `Captain`, `Lieutenant`, `Sergeant`, `Detective`, `Inspector`, `Police Officer`, and `Street Thug`
+  - automatic/passive summary cards are live for `Chief of Police`, `Mob Boss`, `Knife Hobo`
+  - explicit passive-only summary cards are now live for remaining Police (excluding Deputy, Sheriff, Captain, Lieutenant, Sergeant, Detective, Inspector, and Police Officer), remaining Mob-operative roles, and trade roles
+- The next session should not start with 409 auto-retry UX.
+- The next session should start with the next unimplemented role power after Street Thug.
+
+### Deputy Role: What Is Already Known
+
+- `Deputy` exists as a canonical Police role title in room assignment and gameplay DTOs.
+- `Deputy` now has an activated role ability: `Protective Custody` (once per game).
+- Current gameplay behavior for `Protective Custody`:
+  - usable during `information` phase only
+  - can target any alive player except self
+  - target gains 5-minute murder immunity
+  - attempted murder on protected target still triggers a trial
+  - attempted-murder trial keeps target alive and does not transfer target resources
+  - custody notices/timer are visible to moderator, deputy, and target only
+- Existing rule/docs support these Deputy-adjacent mechanics:
+  - Police hierarchy places `Deputy` directly below `Chief of Police`
+  - Police succession is automatic when higher-ranked Police are eliminated
+  - EFJ bribe transfer may randomly route to eligible Police, including `Deputy`
+  - Deputy starting money is defined in the economy tables
+- Deputy power mutation flow now exists in gameplay domain/view layers with targeted tests.
+
+### Detective Role: What Is Already Known
+
+- `Detective` now has an activated role ability: `Investigation` (once per game).
+- Current gameplay behavior for `Investigation`:
+  - usable during any phase while the game is `in_progress`
+  - blocked if the Detective is temporarily removed from interaction by custody/capture
+  - can target any participant, including alive, dead, or jailed players
+  - privately reveals the target's last 3 player-to-player transactions for 60 seconds with no countdown
+  - reveal includes local timestamp, sender, recipient, money amount, item name, and transaction type
+  - excludes central-supply and other system-initiated transfers
+  - older sale + money-gift history is backfilled from the gameplay ledger where available
+  - newly accepted sales, money gifts, and item gifts are now persisted as player transaction history
+- Existing rule/docs support these Detective-adjacent mechanics:
+  - Police hierarchy places `Detective` below `Sergeant` in succession
+  - Detective remains eligible for existing Police-chain logic outside the new power
+  - EFJ bribe transfer may randomly route to eligible Police, including `Detective`
+
+### Detective Role: Missing Spec Before Implementation
+
+- None for current Detective scope. Follow-up clarifications, if needed, should only cover edge cases not already implemented.
+
+### Inspector Role: What Is Already Known
+
+- `Inspector` now has an activated role ability: `Record Inspection` (once per game).
+- Current gameplay behavior for `Record Inspection`:
+  - usable during any phase while the game is `in_progress`
+  - blocked if the Inspector is temporarily removed from interaction by custody/capture
+  - can target any dead or jailed participant except self
+  - privately reveals the target's role name for 60 seconds with no countdown
+  - sends no moderator, public, or target-facing notice
+  - fails with `No jail or morgue records available yet.` when no dead or jailed targets exist
+- Existing rule/docs support these Inspector-adjacent mechanics:
+  - Police hierarchy places `Inspector` below `Detective` in succession
+  - Inspector remains eligible for existing Police-chain logic outside the new power
+
+### Inspector Role: Missing Spec Before Implementation
+
+- None for current Inspector scope. Follow-up clarifications, if needed, should only cover edge cases not already implemented.
+
+### Police Officer Role: What Is Already Known
+
+- `Police Officer` now has an activated role ability: `Confiscation` (once per game).
+- Current gameplay behavior for `Confiscation`:
+  - can be armed during `information`, `accused_selection`, or active `trial_voting` before all votes are submitted
+  - is blocked if the Police Officer is temporarily removed from interaction by custody/capture
+  - applies to the next guilty verdict only
+  - if the officer is still alive and EFJ does not trigger, jailed inventory is liquidated into cash and redistributed between the Police Officer and other alive police
+  - if the officer is inactive, EFJ triggers, the verdict is not guilty, or no recoverable resources exist, the armed effect is consumed and resolved via notices
+  - alive police beneficiaries are notified when they receive funds, and an overridden normal inheritance recipient is notified when confiscation blocks their direct transfer
+- Existing rule/docs support these Police Officer-adjacent mechanics:
+  - Police hierarchy places `Police Officer` below `Inspector` in succession
+  - Police Officer remains eligible for existing Police-chain logic outside the new power
+
+### Police Officer Role: Missing Spec Before Implementation
+
+- None for current Police Officer scope. Follow-up clarifications, if needed, should only cover edge cases not already implemented.
+
+### Street Thug Role: What Is Already Known
+
+- `Street Thug` now has an activated role ability: `Steal` (once per game).
+- Current gameplay behavior for `Steal`:
+  - usable during any phase while the game is `in_progress`
+  - blocked if the Street Thug is temporarily removed from interaction by capture/custody
+  - can target any alive non-self participant who is not currently captured
+  - if the target has at least `$100`, exactly `$100` moves from the target to the Street Thug
+  - if the target has less than `$100`, no money moves and the power is still consumed
+  - Street Thug, target, and moderator are notified of the result
+  - successful steals are persisted in the gameplay ledger for reconciliation
+- Existing rule/docs support these Street Thug-adjacent mechanics:
+  - Street Thug remains part of normal Mob succession outside the new power
+  - Street Thug starting money is defined in the economy tables
+  - Knife Hobo remains the separate automatic starting-knife role and is not part of this activated slice
+
+### Street Thug Role: Missing Spec Before Implementation
+
+- None for current Street Thug scope. Follow-up clarifications, if needed, should only cover edge cases not already implemented.
+
+### Merchant-Faction Clarifications Before Next Slice
+
+- `Merchant`, `Arms Dealer`, `Smuggler`, and `Supplier` are all canonical `Merchant` faction roles.
+- Each merchant-type player is solo and pursues their own individual money-goal win condition; merchant-faction players do not share a team win.
+- Merchant-type players otherwise participate in the normal game loop:
+  - can murder
+  - can serve as jurors
+  - can be accused, jailed, killed, and affected by ordinary game systems
+- Role differentiation comes from role-specific superpowers layered on top of the shared merchant-faction rules.
+- At 7 players, the inserted merchant-type role is always `Merchant`.
+- Additional merchant-type roles are only added when player count requires more merchant slots; those extra slots are filled from the non-base merchant-role set.
+
+## Next Recommended Order
+
+1. Keep the Detective, Inspector, Police Officer, Street Thug, Ghost View, and Felon escape slices stable while playtesting.
+2. Merchant superpower slice is now `Wholesale Order`: once/game discounted central-supply purchase during information phase for the base `Merchant` role.
+3. `Arms Dealer` now has automatic `Starting Gun Cache` at launch, `Smuggler` now has active `Smuggle`, and `Gun Runner` now has timed `Charisma`; continue next with `Supplier`.
+4. For each role, implement the full vertical slice:
+   - domain command/service hook
+   - request DTO + endpoint/view
+   - role card controls
+   - domain tests
+   - HTML/JSON tests
+5. Revisit deferred 409 auto-retry UX after role card metadata/UI stabilize.

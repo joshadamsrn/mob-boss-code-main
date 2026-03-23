@@ -7,7 +7,7 @@
       "user_id": "u_chief",
       "username": "chief",
       "faction": "Police",
-      "role_name": "Police Chief",
+      "role_name": "Chief of Police",
       "rank": 1,
       "starting_balance": 300
     },
@@ -15,7 +15,7 @@
       "user_id": "u_deputy",
       "username": "deputy",
       "faction": "Police",
-      "role_name": "Police Deputy",
+      "role_name": "Deputy",
       "rank": 2,
       "starting_balance": 250
     },

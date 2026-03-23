@@ -3,20 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Literal
 
 RoomStatus = Literal["lobby", "in_progress", "ended"]
 MembershipStatus = Literal["joined", "left", "kicked"]
 FactionName = Literal["Police", "Mob", "Merchant"]
-ApprovedItemClassification = Literal[
-    "knife",
-    "gun_tier_1",
-    "gun_tier_2",
-    "gun_tier_3",
-    "bulletproof_vest",
-    "escape_from_jail",
-    "intel_briefcase",
-]
+ApprovedItemClassification = str
 ITEM_CLASSIFICATIONS: tuple[dict[str, str], ...] = (
     {"code": "knife", "display_name": "Knife"},
     {"code": "gun_tier_1", "display_name": "Handgun (Tier 1)"},
@@ -24,23 +17,27 @@ ITEM_CLASSIFICATIONS: tuple[dict[str, str], ...] = (
     {"code": "gun_tier_3", "display_name": "Revolver (Tier 3)"},
     {"code": "bulletproof_vest", "display_name": "Bulletproof Vest"},
     {"code": "escape_from_jail", "display_name": "Escape From Jail"},
-    {"code": "intel_briefcase", "display_name": "Intel Briefcase"},
 )
 APPROVED_ITEM_CLASSIFICATIONS: set[str] = {item["code"] for item in ITEM_CLASSIFICATIONS}
 ITEM_CLASSIFICATION_DISPLAY_NAMES: dict[str, str] = {
     item["code"]: item["display_name"] for item in ITEM_CLASSIFICATIONS
 }
-MIN_REQUIRED_ROOM_ITEMS = 7
-REQUIRED_ROOM_ITEM_CLASSIFICATIONS: tuple[str, ...] = (
-    "knife",
-    "gun_tier_1",
-    "gun_tier_2",
-    "gun_tier_3",
-    "bulletproof_vest",
-    "escape_from_jail",
-    "intel_briefcase",
-)
+MIN_REQUIRED_ROOM_ITEMS = 0
+REQUIRED_ROOM_ITEM_CLASSIFICATIONS: tuple[str, ...] = ()
 FACTION_NAMES: set[str] = {"Police", "Mob", "Merchant"}
+_DYNAMIC_GUN_CLASSIFICATION_PATTERN = re.compile(r"^gun_tier_[123]_[1-9]\d*$")
+_DYNAMIC_KNIFE_CLASSIFICATION_PATTERN = re.compile(r"^knife_[1-9]\d*$")
+
+
+def is_supported_item_classification(value: str) -> bool:
+    normalized = str(value).strip()
+    if normalized in APPROVED_ITEM_CLASSIFICATIONS:
+        return True
+    if _DYNAMIC_GUN_CLASSIFICATION_PATTERN.match(normalized):
+        return True
+    if _DYNAMIC_KNIFE_CLASSIFICATION_PATTERN.match(normalized):
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -159,7 +156,7 @@ class UpsertRoomItemCommand:
     @classmethod
     def from_json(cls, payload: dict) -> "UpsertRoomItemCommand":
         classification = payload["classification"]
-        if classification not in APPROVED_ITEM_CLASSIFICATIONS:
+        if not is_supported_item_classification(classification):
             raise ValueError(f"Unsupported item classification: {classification!r}")
         return cls(
             room_id=_require_non_empty(payload, "room_id"),
@@ -180,12 +177,27 @@ class DeactivateRoomItemCommand:
     @classmethod
     def from_json(cls, payload: dict) -> "DeactivateRoomItemCommand":
         classification = payload["classification"]
-        if classification not in APPROVED_ITEM_CLASSIFICATIONS:
+        if not is_supported_item_classification(classification):
             raise ValueError(f"Unsupported item classification: {classification!r}")
         return cls(
             room_id=_require_non_empty(payload, "room_id"),
             moderator_user_id=_require_non_empty(payload, "moderator_user_id"),
             classification=classification,
+        )
+
+
+@dataclass(frozen=True)
+class SetMobSecretWordCommand:
+    room_id: str
+    moderator_user_id: str
+    secret_mob_word: str
+
+    @classmethod
+    def from_json(cls, payload: dict) -> "SetMobSecretWordCommand":
+        return cls(
+            room_id=_require_non_empty(payload, "room_id"),
+            moderator_user_id=_require_non_empty(payload, "moderator_user_id"),
+            secret_mob_word=_require_non_empty(payload, "secret_mob_word"),
         )
 
 
@@ -276,6 +288,7 @@ class RoomDetailsSnapshot:
     members: list[RoomMemberSnapshot]
     items: list[RoomItemSnapshot]
     launched_game_id: str | None = None
+    secret_mob_word: str = ""
 
 
 def _require_non_empty(payload: dict, key: str) -> str:

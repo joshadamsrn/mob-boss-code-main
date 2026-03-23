@@ -24,6 +24,7 @@ from project.mobboss_apps.rooms.ports.internal_requests_dto import (
     RoomsIndexRequestDTO,
     RoomDetailRequestDTO,
     SetMemberBalanceRequestDTO,
+    SetMobSecretWordRequestDTO,
     SetRoomReadinessRequestDTO,
     ShuffleRolesPageRequestDTO,
     UpsertRoomItemRequestDTO,
@@ -77,6 +78,14 @@ def _redirect_to_room_detail_with_context(request: HttpRequest, room_id: str) ->
     as_user_id = str(request.POST.get("as_user_id", request.GET.get("as_user_id", ""))).strip()
     simulate_actions = _parse_bool_flag(request.POST.get("simulate_actions", request.GET.get("simulate_actions", "")))
     return redirect(_room_detail_url(room_id=room_id, as_user_id=as_user_id, simulate_actions=simulate_actions))
+
+
+def _set_active_game_session(request: HttpRequest, *, game_id: str, room_id: str) -> None:
+    session_store = getattr(request, "session", None)
+    if session_store is None:
+        return
+    session_store["active_game_id"] = game_id
+    session_store["active_room_id"] = room_id
 
 
 @login_required(login_url="/auth/")
@@ -135,6 +144,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 messages.info(request, "Game already in progress.")
                 return redirect("web-lobby")
             if room.launched_game_id:
+                _set_active_game_session(request, game_id=room.launched_game_id, room_id=room.room_id)
                 return redirect("gameplay-detail", game_id=room.launched_game_id)
 
 
@@ -494,12 +504,34 @@ def deactivate_item(request: HttpRequest, room_id: str, classification: str) -> 
 
 
 @login_required(login_url="/auth/")
+def set_mob_secret_word(request: HttpRequest, room_id: str) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("rooms-detail", room_id=room_id)
+    try:
+        dto = SetMobSecretWordRequestDTO.from_payload(
+            {
+                "room_id": room_id,
+                "moderator_user_id": _current_user_id(request),
+                "secret_mob_word": request.POST.get("secret_mob_word", ""),
+            }
+        )
+        container = get_container()
+        rooms_inbound = container.rooms_inbound_port
+        rooms_inbound.set_mob_secret_word(dto.to_command())
+        messages.success(request, "Secret mob word saved.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return _redirect_to_room_detail_with_context(request, room_id=room_id)
+
+
+@login_required(login_url="/auth/")
 def launch_game(request: HttpRequest, room_id: str) -> HttpResponse:
     try:
         dto = LaunchGameFromRoomRequestDTO.from_payload({"room_id": room_id, "requested_by_user_id": _current_user_id(request)})
         container = get_container()
         rooms_inbound = container.rooms_inbound_port
         game_id = rooms_inbound.launch_game_from_room(dto.to_command())
+        _set_active_game_session(request, game_id=game_id, room_id=room_id)
         messages.success(request, f"Game launched: {game_id}")
         return redirect("gameplay-detail", game_id=game_id)
     except Exception as exc:
@@ -548,4 +580,3 @@ def shuffle_roles(request: HttpRequest, room_id: str) -> HttpResponse:
             return HttpResponse(str(exc), status=400)
         messages.error(request, str(exc))
     return redirect("rooms-detail", room_id=room_id)
-

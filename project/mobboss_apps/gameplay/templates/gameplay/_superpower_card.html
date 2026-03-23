@@ -1,0 +1,504 @@
+{% if superpower_panel.show %}
+    <div class="card hero-card mb-3">
+        <div class="card-body p-3 p-md-4">
+            <div class="role-ability-copy">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2 role-ability-copy-head">
+                        <div>
+                            <h2 class="h6 mb-1">{{ superpower_panel.title }}</h2>
+                            <div class="small text-secondary">Role: {{ superpower_panel.role_name }}</div>
+                        </div>
+                        <span class="badge text-bg-light border">{{ superpower_panel.ability_name }}</span>
+                    </div>
+                    <div class="small text-secondary mt-1 mb-3">{{ superpower_panel.description }}</div>
+                    {% if superpower_panel.status_text or superpower_panel.role_name == "Mob Boss" %}
+                        <div class="alert alert-{{ superpower_panel.status_tone }} py-2 px-3">
+                            {% if superpower_panel.role_name == "Mob Boss" %}
+                                {{ superpower_panel.implementation_state }}
+                            {% else %}
+                                {{ superpower_panel.status_text }}
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    {% if superpower_panel.details %}
+                        <div class="mb-3">
+                            <div class="small text-uppercase text-secondary mb-2">
+                                {% if superpower_panel.ability_name %}
+                                    Ability Rules
+                                {% else %}
+                                    Role Rules
+                                {% endif %}
+                            </div>
+                            <ul class="small mb-0 ps-3">
+                                {% for detail in superpower_panel.details %}
+                                    <li>{{ detail }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                    {% if superpower_panel.kind == "info" %}
+                        {% if superpower_panel.role_name != "Mob Boss" %}
+                            <div class="small text-secondary">{{ superpower_panel.implementation_state }}</div>
+                        {% endif %}
+                    {% endif %}
+                    {% if superpower_panel.kind == "don" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-don-silence" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="donTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="donTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Intimidation</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability is only available during an active trial.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "underboss" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-underboss-jury-override" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="removedJurorUserId" class="small text-secondary">Juror To Remove</label>
+                        <select id="removedJurorUserId" name="removed_juror_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select juror</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Replace Juror</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability is only available during an active trial with a jury.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "kingpin" %}
+                <div class="small text-secondary mb-2">Remaining uses: {{ superpower_panel.remaining_uses }}</div>
+                {% if superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-kingpin-reduce-clock">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <button type="submit" class="btn btn-dark btn-sm">Reduce Trial Clock</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Use this during jury voting, up to two different trials.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "gangster" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-gangster-tamper" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="gangsterTargetUserId" class="small text-secondary">Target Juror</label>
+                        <select id="gangsterTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select juror</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Tamper</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "street_thug" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-street-thug-steal" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="streetThugTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="streetThugTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Steal</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "smuggler" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-smuggler-smuggle" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="smugglerTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="smugglerTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Smuggle</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "gun_runner" %}
+                {% if superpower_panel.charisma_state %}
+                    <div class="alert alert-info py-2 px-3 mb-2">
+                        <div>Charisma is active. Accepted sales pay an additional 30% system bonus.</div>
+                        <div class="small">
+                            Time remaining:
+                            <strong
+                                id="gunRunnerCharismaCountdown"
+                                data-custody-expiry-epoch="{{ superpower_panel.charisma_state.visible_until_epoch_seconds }}"
+                            >--</strong>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used and not superpower_panel.charisma_state %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-gun-runner-charisma">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <button type="submit" class="btn btn-dark btn-sm">Start Charisma</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "merchant" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-merchant-wholesale-order" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="merchantWholesaleClassification" class="small text-secondary">Supply Item</label>
+                        <select id="merchantWholesaleClassification" name="classification" class="form-select form-select-sm" required>
+                            <option value="">Select item</option>
+                            {% for item in superpower_panel.target_rows %}
+                                <option value="{{ item.classification }}">{{ item.display_name }} (now ${{ item.discounted_price }})</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Submit Wholesale Order</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "supplier" %}
+                {% if superpower_panel.acquire_state %}
+                    <div class="alert alert-info py-2 px-3 mb-2">
+                        <div><strong>{{ superpower_panel.acquire_state.target_username }}</strong> has been marked.</div>
+                        <div class="small">If that player is a merchant-faction seller, half of the base price from their next successful player sale will be redirected to you.</div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used and not superpower_panel.acquire_state %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-supplier-acquire" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="supplierTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="supplierTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Acquire</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "deputy" %}
+                {% if superpower_panel.active_custody %}
+                    <div class="alert alert-info py-2 px-3 mb-2">
+                        <div><strong>{{ superpower_panel.active_custody.target_username }}</strong> is under protection.</div>
+                        <div class="small">
+                            Time remaining:
+                            <strong
+                                id="deputyProtectiveCustodyCountdown"
+                                data-custody-expiry-epoch="{{ superpower_panel.active_custody.expires_at_epoch_seconds }}"
+                            >--</strong>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-deputy-protective-custody" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="deputyTargetUserId" class="small text-secondary">Protected Player</label>
+                        <select id="deputyTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Apply Protective Custody</button>
+                    </form>
+                {% elif superpower_panel.active_custody %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Another player is already under protective custody.</div>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability is only available during the Information phase.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "sheriff" %}
+                <div class="small text-secondary mb-2">Uses left: {{ superpower_panel.remaining_uses }}</div>
+                {% if superpower_panel.reveal_state %}
+                    <div
+                        id="sheriffJuryLogReveal"
+                        data-visible-until-epoch="{{ superpower_panel.reveal_state.visible_until_epoch_seconds }}"
+                        class="alert alert-info py-2 px-3 mb-2"
+                    >
+                        <div class="fw-semibold mb-1">Most Recent Jury</div>
+                        <ul class="small mb-0 ps-3">
+                            {% for username in superpower_panel.reveal_state.jury_usernames %}
+                                <li>{{ username }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-sheriff-view-jury-log">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <button type="submit" class="btn btn-dark btn-sm">View Jury Log</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">You have used both charges for this power.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "captain" %}
+                {% if superpower_panel.active_freeze %}
+                    <div class="alert alert-info py-2 px-3 mb-2">
+                        <div><strong>{{ superpower_panel.active_freeze.target_username }}</strong> has an active asset freeze.</div>
+                        <div class="small">
+                            Time remaining:
+                            <strong
+                                id="captainAssetFreezeCountdown"
+                                data-custody-expiry-epoch="{{ superpower_panel.active_freeze.expires_at_epoch_seconds }}"
+                            >--</strong>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-captain-asset-freeze" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="captainTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="captainTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Apply Asset Freeze</button>
+                    </form>
+                {% elif superpower_panel.active_freeze %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Another player is currently under asset freeze.</div>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Available while game is in progress.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "lieutenant" %}
+                {% if superpower_panel.reveal_state %}
+                    <div
+                        id="lieutenantBriefcaseReveal"
+                        data-visible-until-epoch="{{ superpower_panel.reveal_state.visible_until_epoch_seconds }}"
+                        class="alert alert-info py-2 px-3 mb-2"
+                    >
+                        <div class="fw-semibold mb-1">Alive Faction Counts</div>
+                        <ul class="small mb-0 ps-3">
+                            <li>Police: {{ superpower_panel.reveal_state.alive_police_count }}</li>
+                            <li>Mob: {{ superpower_panel.reveal_state.alive_mob_count }}</li>
+                            <li>Merchant: {{ superpower_panel.reveal_state.alive_merchant_count }}</li>
+                        </ul>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-lieutenant-information-briefcase">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <button type="submit" class="btn btn-dark btn-sm">Open Information Briefcase</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Available while game is in progress.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "sergeant" %}
+                {% if superpower_panel.active_capture %}
+                    <div class="alert alert-info py-2 px-3 mb-2">
+                        <div><strong>{{ superpower_panel.active_capture.target_username }}</strong> is currently in police custody.</div>
+                        <div class="small">
+                            Time remaining:
+                            <strong
+                                id="sergeantCaptureCountdown"
+                                data-custody-expiry-epoch="{{ superpower_panel.active_capture.expires_at_epoch_seconds }}"
+                            >--</strong>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-sergeant-capture" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="sergeantTargetUserId" class="small text-secondary">Target Player</label>
+                        <select id="sergeantTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Apply Capture</button>
+                    </form>
+                {% elif superpower_panel.active_capture %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Another player is currently in custody.</div>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This can only be used in the Information phase.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "detective" %}
+                {% if superpower_panel.reveal_state %}
+                    <div
+                        id="detectiveInvestigationReveal"
+                        data-visible-until-epoch="{{ superpower_panel.reveal_state.visible_until_epoch_seconds }}"
+                        class="alert alert-info py-2 px-3 mb-2"
+                    >
+                        <div class="fw-semibold mb-1">{{ superpower_panel.reveal_state.target_username }} Transaction History</div>
+                        {% if superpower_panel.reveal_state.transaction_rows %}
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Time stamp</th>
+                                            <th scope="col">Sender</th>
+                                            <th scope="col">Recipient</th>
+                                            <th scope="col">Money Amount</th>
+                                            <th scope="col">Item Name</th>
+                                            <th scope="col">Transaction Type</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for transaction in superpower_panel.reveal_state.transaction_rows %}
+                                            <tr>
+                                                <td>{{ transaction.timestamp_text }}</td>
+                                                <td>{{ transaction.sender_username }}</td>
+                                                <td>{{ transaction.recipient_username }}</td>
+                                                <td>
+                                                    {% if transaction.money_amount %}
+                                                        ${{ transaction.money_amount }}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ transaction.item_name|default:"-" }}</td>
+                                                <td>{{ transaction.transaction_type_label }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="small mb-0">No player-to-player transactions found for {{ superpower_panel.reveal_state.target_username }}.</div>
+                        {% endif %}
+                        {% if superpower_panel.reveal_state.has_fewer_than_three %}
+                            <div class="small mt-2">
+                                {{ superpower_panel.reveal_state.target_username }} has only had {{ superpower_panel.reveal_state.total_transactions }} total transactions.
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-detective-investigation" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="detectiveTargetUserId" class="small text-secondary">Investigate Player</label>
+                        <select id="detectiveTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Select player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Start Investigation</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">Available while game is in progress.</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "inspector" %}
+                {% if superpower_panel.reveal_state %}
+                    <div
+                        id="inspectorRecordInspectionReveal"
+                        data-visible-until-epoch="{{ superpower_panel.reveal_state.visible_until_epoch_seconds }}"
+                        class="alert alert-info py-2 px-3 mb-2"
+                    >
+                        <div class="fw-semibold mb-1">Record Inspection</div>
+                        <div class="small"><strong>{{ superpower_panel.reveal_state.target_username }}</strong> had the role <strong>{{ superpower_panel.reveal_state.role_name }}</strong>.</div>
+                    </div>
+                {% endif %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-inspector-record-inspection" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="inspectorTargetUserId" class="small text-secondary">Inspect Record</label>
+                        <select id="inspectorTargetUserId" name="target_user_id" class="form-select form-select-sm" required>
+                            <option value="">Choose dead or jailed player</option>
+                            {% for participant in superpower_panel.target_rows %}
+                                <option value="{{ participant.user_id }}">{{ participant.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Record Inspection</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "police_officer" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.pending %}
+                    <div class="alert alert-info py-2 px-3 mb-0">Confiscation is armed for the next guilty verdict.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-police-officer-confiscation">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <button type="submit" class="btn btn-dark btn-sm">Arm Confiscation</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+            {% elif superpower_panel.kind == "made_man" %}
+                {% if superpower_panel.used %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability has already been used.</div>
+                {% elif superpower_panel.can_activate %}
+                    <form method="post" action="/games/{{ page.game_id }}/activate-made-man-skip-middle-man" class="d-flex flex-column gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="expected_version" value="{{ page.version }}">
+                        <label for="madeManSupplyClassification" class="small text-secondary">Central Supply Item</label>
+                        <select id="madeManSupplyClassification" name="classification" class="form-select form-select-sm" required>
+                            <option value="">Choose item</option>
+                            {% for item in superpower_panel.target_rows %}
+                                <option value="{{ item.classification }}">{{ item.display_name }} (${{ item.base_price }})</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Skip Middle Man</button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-secondary py-2 px-3 mb-0">{{ superpower_panel.status_text }}</div>
+                {% endif %}
+                    {% elif superpower_panel.kind != "info" %}
+                <div class="small text-secondary">{{ superpower_panel.implementation_state }}</div>
+                    {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}

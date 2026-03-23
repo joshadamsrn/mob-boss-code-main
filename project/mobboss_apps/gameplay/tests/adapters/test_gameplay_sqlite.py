@@ -15,7 +15,11 @@ from project.mobboss_apps.gameplay.adapters.outbound.sqlite_repository import ( 
 from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     CatalogItemStateSnapshot,
     GameDetailsSnapshot,
+    LedgerEntrySnapshot,
+    LedgerStateSnapshot,
+    ParticipantPowerStateSnapshot,
     ParticipantStateSnapshot,
+    PlayerTransactionSnapshot,
     TrialStateSnapshot,
 )
 
@@ -42,7 +46,7 @@ def _snapshot(
                 user_id="u_police",
                 username="police",
                 faction="Police",
-                role_name="Police Chief",
+                role_name="Chief of Police",
                 rank=1,
                 life_state="alive",
                 money_balance=300,
@@ -67,6 +71,7 @@ def _snapshot(
             )
         ],
         pending_trial=pending_trial,
+        ledger=LedgerStateSnapshot(circulating_currency_baseline=600, checksum="seed-checksum"),
     )
 
 
@@ -112,7 +117,74 @@ class GameplaySqliteAdapterTests(unittest.TestCase):
             conviction_correct=None,
             resolution=None,
         )
-        expected = _snapshot(game_id="r-1-g1-abc12345", version=2, phase="accused_selection", pending_trial=pending_trial)
+        base_snapshot = _snapshot(game_id="r-1-g1-abc12345", version=2, phase="accused_selection", pending_trial=pending_trial)
+        expected = replace(
+            base_snapshot,
+            participants=[
+                replace(
+                    base_snapshot.participants[0],
+                    power_state=ParticipantPowerStateSnapshot(
+                        street_thug_steal_used=True,
+                        detective_investigation_used=True,
+                        detective_investigation_visible_until_epoch_seconds=300,
+                        detective_investigation_target_user_id="u_mob",
+                        detective_last_viewed_transaction_total=1,
+                        detective_last_viewed_transactions=[
+                            PlayerTransactionSnapshot(
+                                transaction_id="txn-view-1",
+                                transaction_kind="money_gift",
+                                sender_user_id="u_police",
+                                recipient_user_id="u_mob",
+                                created_at_epoch_seconds=222,
+                                money_amount=50,
+                            )
+                        ],
+                        inspector_record_inspection_used=True,
+                        inspector_record_visible_until_epoch_seconds=310,
+                        inspector_record_target_user_id="u_mob",
+                        inspector_last_viewed_role_name="Mob Boss",
+                        smuggler_smuggle_used=True,
+                        gun_runner_charisma_used=True,
+                        gun_runner_charisma_expires_at_epoch_seconds=333,
+                        supplier_acquire_used=True,
+                        supplier_acquire_target_user_id="u_mob",
+                        police_officer_confiscation_used=True,
+                        police_officer_confiscation_pending=False,
+                        cop_last_three_protection_used=True,
+                        enforcer_first_kill_bonus_used=True,
+                        merchant_wholesale_order_used=True,
+                    ),
+                ),
+                base_snapshot.participants[1],
+            ],
+            ledger=LedgerStateSnapshot(
+                circulating_currency_baseline=600,
+                checksum="abc123",
+                entries=[
+                    LedgerEntrySnapshot(
+                        entry_id="led-1",
+                        entry_kind="money_gift",
+                        amount=50,
+                        from_holder_id="u_police",
+                        to_holder_id="u_mob",
+                        created_at_epoch_seconds=222,
+                        note="Accepted money gift offer.",
+                    )
+                ],
+            ),
+            player_transactions=[
+                PlayerTransactionSnapshot(
+                    transaction_id="txn-1",
+                    transaction_kind="money_gift",
+                    sender_user_id="u_police",
+                    recipient_user_id="u_mob",
+                    created_at_epoch_seconds=222,
+                    money_amount=50,
+                )
+            ],
+            felon_escape_user_id="u_mob",
+            felon_escape_expires_at_epoch_seconds=555,
+        )
 
         try:
             repository.save_game_session(expected)

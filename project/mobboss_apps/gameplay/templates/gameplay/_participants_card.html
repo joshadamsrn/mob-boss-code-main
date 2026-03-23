@@ -9,11 +9,86 @@
                             {{ participant.username }}
                             {% if participant.is_self %}<span class="text-secondary small">(You)</span>{% endif %}
                         </div>
-                        <span class="badge {% if participant.life_state == 'alive' %}text-bg-success{% elif participant.life_state == 'jailed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
-                            {{ participant.life_state|title }}
-                        </span>
+                        <div class="d-flex gap-1 align-items-center">
+                            {% if page.is_moderator and participant.is_juror or page.is_ghost_view and participant.is_juror %}
+                                <span class="badge text-bg-info">Juror</span>
+                            {% endif %}
+                            <span class="badge {% if participant.status_label == 'on_trial' %}text-bg-danger{% elif participant.status_label == 'silenced' %}text-bg-dark{% elif participant.life_state == 'alive' %}text-bg-success{% elif participant.life_state == 'jailed' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+                                {% if participant.status_label == "on_trial" %}On Trial{% elif participant.status_label == "silenced" %}Silenced{% else %}{{ participant.life_state|title }}{% endif %}
+                            </span>
+                        </div>
                     </div>
-                    <div class="small text-secondary mt-1">{{ participant.role_label }}</div>
+                    {% if page.is_moderator or page.is_ghost_view or participant.is_self %}
+                        <div class="small text-secondary mt-1">{{ participant.role_label }}</div>
+                    {% else %}
+                        <div class="participant-notes mt-2" data-user-id="{{ participant.user_id }}">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                                <div class="small text-secondary">Notes</div>
+                                {% if page.status == "ended" and participant.role_label != "Hidden" %}
+                                    <div class="small text-secondary">{{ participant.role_label }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="participant-notes-options d-flex gap-2 flex-wrap">
+                                <button type="button" class="participant-note-button" data-faction-guess="Unknown" aria-pressed="true" title="Guess Unknown">
+                                    <span class="participant-note-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false">
+                                            <path d="M9.7 9.2a2.3 2.3 0 0 1 4.6.1c0 1.1-.7 1.7-1.5 2.3-.8.5-1.3 1-1.3 1.9v.8" class="participant-note-icon-cutout"></path>
+                                            <circle cx="12" cy="17.8" r=".95" class="participant-note-icon-dot"></circle>
+                                        </svg>
+                                    </span>
+                                    <span>Unknown</span>
+                                </button>
+                                <button type="button" class="participant-note-button" data-faction-guess="Mob" aria-pressed="false" title="Guess Mob">
+                                    <span class="participant-note-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false">
+                                            <path d="M7.2 6.4 17.6 16.8M17.6 6.4 7.2 16.8" class="participant-note-icon-cutout"></path>
+                                        </svg>
+                                    </span>
+                                    <span>Mob</span>
+                                </button>
+                                <button type="button" class="participant-note-button" data-faction-guess="Police" aria-pressed="false" title="Guess Police">
+                                    <span class="participant-note-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false">
+                                            <path d="M12 2.5 7.2 4.4v4.2c0 4.1 1.9 7.8 4.8 10 2.9-2.2 4.8-5.9 4.8-10V4.4L12 2.5Z"></path>
+                                        </svg>
+                                    </span>
+                                    <span>Police</span>
+                                </button>
+                                <button type="button" class="participant-note-button" data-faction-guess="Merchant" aria-pressed="false" title="Guess Merchant">
+                                    <span class="participant-note-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false">
+                                            <path d="M14.8 9.3h-4c-1.1 0-2 .8-2 1.8s.9 1.8 2 1.8h2.4c1.1 0 2 .8 2 1.8s-.9 1.8-2 1.8h-4M12 6.4v11.2" class="participant-note-icon-cutout"></path>
+                                        </svg>
+                                    </span>
+                                    <span>Merchant</span>
+                                </button>
+                            </div>
+                        </div>
+                    {% endif %}
+                    {% if page.is_moderator or page.is_ghost_view %}
+                        <div class="small mt-1">
+                            {% if participant.role_label == "Hidden" %}
+                                <div class="text-secondary">Cash: Hidden</div>
+                                <div class="text-secondary">Inventory: Hidden</div>
+                            {% else %}
+                                {% if participant.merchant_money_goal is not None %}
+                                    <div class="text-secondary">Cash: ${{ participant.money_balance }} / Goal: ${{ participant.merchant_money_goal }}</div>
+                                {% else %}
+                                    <div class="text-secondary">Cash: ${{ participant.money_balance }}</div>
+                                {% endif %}
+                                <div class="text-secondary">Inventory: {{ participant.inventory_text }}</div>
+                            {% endif %}
+                            {% if participant.life_state == "dead" and participant.murdered_by_username %}
+                                <div class="text-danger">Eliminated By: {{ participant.murdered_by_username }}</div>
+                            {% endif %}
+                            {% if participant.life_state == "jailed" and participant.accused_by_username %}
+                                <div class="text-warning-emphasis">Accused By: {{ participant.accused_by_username }}</div>
+                            {% endif %}
+                            {% if participant.life_state == "jailed" and participant.convicted_by_label %}
+                                <div class="text-warning-emphasis">Convicted By: {{ participant.convicted_by_label }}</div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
                 </div>
             {% empty %}
                 <div class="text-secondary">No participants found.</div>

@@ -21,6 +21,7 @@ from project.mobboss_apps.rooms.ports.internal_requests_dto import (
     LeaveRoomRequestDTO,
     RoomIdRequestDTO,
     SetMemberBalanceRequestDTO,
+    SetMobSecretWordRequestDTO,
     SetRoomReadinessRequestDTO,
     ShuffleRoomRolesRequestDTO,
     UpsertRoomItemRequestDTO,
@@ -228,6 +229,20 @@ class CatalogItemDeactivateView(BaseJsonView):
         return self._ok(_room_details_to_dict(room))
 
 
+class SecretMobWordView(BaseJsonView):
+    def post(self, request: HttpRequest, room_id: str) -> JsonResponse:
+        user_id = self._require_authenticated_user_id(request)
+        container = get_container()
+        rooms_inbound = container.rooms_inbound_port
+        payload = self._load_json_body(request)
+        payload["room_id"] = room_id
+        payload["moderator_user_id"] = user_id
+        dto = SetMobSecretWordRequestDTO.from_payload(payload)
+        command = dto.to_command()
+        room = rooms_inbound.set_mob_secret_word(command)
+        return self._ok(_room_details_to_dict(room))
+
+
 class LaunchGameView(BaseJsonView):
     def post(self, request: HttpRequest, room_id: str) -> JsonResponse:
         user_id = self._require_authenticated_user_id(request)
@@ -311,4 +326,3 @@ def _item_to_dict(item) -> dict:
         "image_path": item.image_path,
         "is_active": item.is_active,
     }
-

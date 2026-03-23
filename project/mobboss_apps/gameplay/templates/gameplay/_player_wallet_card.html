@@ -1,0 +1,197 @@
+{% if show_player_wallet %}
+    <div class="card hero-card mb-3">
+        <div class="card-body p-3 p-md-4">
+            <h2 class="h6 mb-3">Your Wallet & Inventory</h2>
+            <div class="small text-secondary mb-2">Money Balance</div>
+            <div class="fw-semibold mb-3 money-balance-value">${{ player_money_balance }}</div>
+            {% if player_gift_targets %}
+                <form method="post" action="/games/{{ page.game_id }}/give-money" class="mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                    <div class="small text-secondary mb-1">Gift Money</div>
+                    <div class="mobile-form-row">
+                        <select class="form-select form-select-sm" name="receiver_user_id" required>
+                            <option value="">Choose player...</option>
+                            {% for target in player_gift_targets %}
+                                <option value="{{ target.user_id }}">{{ target.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <input class="form-control form-control-sm" type="number" min="1" step="1" name="amount" placeholder="Amount" required>
+                        <button class="btn btn-outline-success btn-sm" type="submit">Send</button>
+                    </div>
+                </form>
+            {% endif %}
+
+            <div class="small text-secondary mb-2">Inventory</div>
+            {% if player_inventory_items %}
+                <div class="d-flex flex-column gap-2">
+                    {% for inventory_item in player_inventory_items %}
+                        <div class="room-member-tile">
+                            <div class="fw-semibold">{{ inventory_item.display_name }}</div>
+                            <div class="small text-secondary">
+                                Acquisition: ${{ inventory_item.acquisition_value }}
+                            </div>
+                            <div class="small text-secondary">
+                                Listed price: ${{ inventory_item.resale_price }}
+                            </div>
+                            {% if player_gift_targets %}
+                                <form method="post" action="/games/{{ page.game_id }}/offer-gift-item" class="mobile-form-row mt-2">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="inventory_item_id" value="{{ inventory_item.item_id }}">
+                                    <select class="form-select form-select-sm" name="receiver_user_id" required>
+                                        <option value="">Choose player...</option>
+                                        {% for target in player_gift_targets %}
+                                            <option value="{{ target.user_id }}">{{ target.username }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-outline-success btn-sm" type="submit">Give</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="small text-secondary">No items in inventory.</div>
+            {% endif %}
+
+            {% if incoming_gift_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Incoming Gift Offers</div>
+                <div class="d-flex flex-column gap-2">
+                    {% for offer in incoming_gift_offers %}
+                        <div class="room-member-tile">
+                            <div class="small mb-2">
+                                <strong>{{ offer.item_display_name }}</strong> offered by <strong>{{ offer.giver_user_id }}</strong>
+                            </div>
+                            <div class="mobile-form-actions">
+                                <form method="post" action="/games/{{ page.game_id }}/respond-gift-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="gift_offer_id" value="{{ offer.gift_offer_id }}">
+                                    <input type="hidden" name="accept" value="true">
+                                    <button class="btn btn-success btn-sm" type="submit">Accept</button>
+                                </form>
+                                <form method="post" action="/games/{{ page.game_id }}/respond-gift-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="gift_offer_id" value="{{ offer.gift_offer_id }}">
+                                    <input type="hidden" name="accept" value="false">
+                                    <button class="btn btn-outline-secondary btn-sm" type="submit">Decline</button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if outgoing_gift_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Gifts You Sent</div>
+                <ul class="small text-secondary mb-0 ps-3">
+                    {% for offer in outgoing_gift_offers %}
+                        <li>{{ offer.item_display_name }} -> {{ offer.receiver_user_id }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+
+            {% if incoming_money_gift_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Incoming Money Gift Offers</div>
+                <div class="d-flex flex-column gap-2">
+                    {% for offer in incoming_money_gift_offers %}
+                        <div class="room-member-tile">
+                            <div class="small mb-2">
+                                <strong>${{ offer.amount }}</strong> offered by <strong>{{ offer.giver_user_id }}</strong>
+                            </div>
+                            <div class="mobile-form-actions">
+                                <form method="post" action="/games/{{ page.game_id }}/respond-money-gift-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="money_gift_offer_id" value="{{ offer.money_gift_offer_id }}">
+                                    <input type="hidden" name="accept" value="true">
+                                    <button class="btn btn-success btn-sm" type="submit">Accept</button>
+                                </form>
+                                <form method="post" action="/games/{{ page.game_id }}/respond-money-gift-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="money_gift_offer_id" value="{{ offer.money_gift_offer_id }}">
+                                    <input type="hidden" name="accept" value="false">
+                                    <button class="btn btn-outline-secondary btn-sm" type="submit">Decline</button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if outgoing_money_gift_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Money Gifts You Sent</div>
+                <ul class="small text-secondary mb-0 ps-3">
+                    {% for offer in outgoing_money_gift_offers %}
+                        <li>${{ offer.amount }} -> {{ offer.receiver_user_id }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+
+            {% if incoming_sale_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Purchase Requests</div>
+                <div class="d-flex flex-column gap-2">
+                    {% for offer in incoming_sale_offers %}
+                        <div class="room-member-tile">
+                            <div class="small mb-1">
+                                <strong>{{ offer.seller_user_id }}</strong> wants to sell you
+                                <strong>{{ offer.item_display_name }}</strong>.
+                            </div>
+                            <div class="small text-secondary mb-2">Price: ${{ offer.sale_price }}</div>
+                            <div class="mobile-form-actions">
+                                <form method="post" action="/games/{{ page.game_id }}/respond-sale-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="sale_offer_id" value="{{ offer.sale_offer_id }}">
+                                    <input type="hidden" name="accept" value="true">
+                                    <button class="btn btn-success btn-sm" type="submit">Accept Purchase</button>
+                                </form>
+                                <form method="post" action="/games/{{ page.game_id }}/respond-sale-offer">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                    <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                    <input type="hidden" name="expected_version" value="{{ page.version }}">
+                                    <input type="hidden" name="sale_offer_id" value="{{ offer.sale_offer_id }}">
+                                    <input type="hidden" name="accept" value="false">
+                                    <button class="btn btn-outline-secondary btn-sm" type="submit">Decline</button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if outgoing_sale_offers %}
+                <hr class="my-3">
+                <div class="small text-secondary mb-2">Sales You Sent</div>
+                <ul class="small text-secondary mb-0 ps-3">
+                    {% for offer in outgoing_sale_offers %}
+                        <li>{{ offer.item_display_name }} -> {{ offer.buyer_user_id }} (${{ offer.sale_price }})</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    </div>
+{% endif %}

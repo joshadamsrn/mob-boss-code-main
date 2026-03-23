@@ -17,6 +17,9 @@ from project.mobboss_apps.economy.ports.outbound import EconomyCatalogDefaultsOu
 from project.mobboss_apps.gameplay.adapters.outbound.memory_impl import (
     MemoryGameplayOutboundPortImpl,
 )
+from project.mobboss_apps.gameplay.adapters.outbound.room_lifecycle_impl import (
+    RoomsLifecycleSyncOutboundPortImpl,
+)
 from project.mobboss_apps.gameplay.adapters.outbound.sqlite_impl import (
     SqliteGameplayOutboundPortImpl,
 )
@@ -128,7 +131,10 @@ def compose_default_container() -> Container:
 
     # --- Inbound Services ---
     iam_inbound_port = IamService(auth_gateway=iam_outbound_port)
-    gameplay_inbound_port = GameplayService(repository=gameplay_outbound_port)
+    gameplay_inbound_port = GameplayService(
+        repository=gameplay_outbound_port,
+        room_lifecycle_outbound_port=RoomsLifecycleSyncOutboundPortImpl(rooms_repository=rooms_outbound_port),
+    )
     rooms_inbound_port = RoomsService(
         repository=rooms_outbound_port,
         minimum_launch_players=room_project_settings.minimum_launch_players,
@@ -176,7 +182,10 @@ def compose_unittest_container() -> Container:
 
     # --- Inbound Services ---
     iam_inbound_port = IamService(auth_gateway=iam_outbound_port)
-    gameplay_inbound_port = GameplayService(repository=gameplay_outbound_port)
+    gameplay_inbound_port = GameplayService(
+        repository=gameplay_outbound_port,
+        room_lifecycle_outbound_port=RoomsLifecycleSyncOutboundPortImpl(rooms_repository=rooms_outbound_port),
+    )
     rooms_inbound_port = RoomsService(
         repository=rooms_outbound_port,
         minimum_launch_players=room_project_settings.minimum_launch_players,
@@ -203,4 +212,3 @@ def compose_unittest_container() -> Container:
         room_state_poll_interval_seconds=room_project_settings.state_poll_interval_seconds,
         room_auto_shuffle_interval_seconds=room_project_settings.auto_shuffle_interval_seconds,
     )
-

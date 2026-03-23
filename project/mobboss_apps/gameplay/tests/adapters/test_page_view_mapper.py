@@ -13,6 +13,7 @@ from project.mobboss_apps.gameplay.adapters.internal.page_view_mapper import (  
 from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     CatalogItemStateSnapshot,
     GameDetailsSnapshot,
+    InventoryItemStateSnapshot,
     ParticipantStateSnapshot,
     TrialStateSnapshot,
 )
@@ -34,10 +35,20 @@ def _snapshot() -> GameDetailsSnapshot:
                 user_id="u_police",
                 username="police",
                 faction="Police",
-                role_name="Police Chief",
+                role_name="Chief of Police",
                 rank=1,
                 life_state="alive",
                 money_balance=300,
+                inventory=[
+                    InventoryItemStateSnapshot(
+                        item_id="inv-1",
+                        classification="knife",
+                        display_name="Knife",
+                        image_path="/static/items/defaults/default_knife.svg",
+                        acquisition_value=100,
+                        resale_price=100,
+                    )
+                ],
             ),
             ParticipantStateSnapshot(
                 user_id="u_mob",
@@ -47,6 +58,7 @@ def _snapshot() -> GameDetailsSnapshot:
                 rank=1,
                 life_state="alive",
                 money_balance=300,
+                inventory=[],
             ),
         ],
         catalog=[
@@ -82,7 +94,7 @@ class GameplayPageViewMapperTests(unittest.TestCase):
         self.assertIsNone(page.pending_trial)
         own_row = next(row for row in page.participant_rows if row.user_id == "u_police")
         other_row = next(row for row in page.participant_rows if row.user_id == "u_mob")
-        self.assertEqual(own_row.role_label, "Police / Police Chief (1)")
+        self.assertEqual(own_row.role_label, "Faction: Police / Role: Chief of Police")
         self.assertEqual(other_row.role_label, "Hidden")
         self.assertFalse(page.can_report_death)
 
@@ -91,14 +103,127 @@ class GameplayPageViewMapperTests(unittest.TestCase):
 
         self.assertTrue(page.is_moderator)
         mob_row = next(row for row in page.participant_rows if row.user_id == "u_mob")
-        self.assertEqual(mob_row.role_label, "Mob / Mob Boss (1)")
+        self.assertEqual(mob_row.role_label, "Faction: Mob / Role: Mob Boss")
+        police_row = next(row for row in page.participant_rows if row.user_id == "u_police")
+        self.assertEqual(police_row.inventory_text, "Knife")
+        self.assertEqual(police_row.money_balance, 300)
         self.assertIsNotNone(page.pending_trial)
         self.assertEqual(page.pending_trial.current_responder_user_id, "u_police")
         self.assertEqual(page.pending_trial.murdered_user_id, "u_x")
 
+    def test_player_view_reveals_all_roles_after_game_has_ended(self) -> None:
+        ended_snapshot = GameDetailsSnapshot(
+            game_id="g-1",
+            room_id="r-1",
+            moderator_user_id="u_mod",
+            status="ended",
+            phase="ended",
+            round_number=1,
+            version=3,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=150,
+            participants=_snapshot().participants,
+            catalog=_snapshot().catalog,
+            pending_trial=None,
+            winning_faction="Police",
+        )
+
+        page = build_gameplay_page_view(ended_snapshot, "u_police")
+
+        own_row = next(row for row in page.participant_rows if row.user_id == "u_police")
+        other_row = next(row for row in page.participant_rows if row.user_id == "u_mob")
+        self.assertEqual(own_row.role_label, "Faction: Police / Role: Chief of Police")
+        self.assertEqual(other_row.role_label, "Faction: Mob / Role: Mob Boss")
+
     def test_non_participant_player_is_rejected(self) -> None:
         with self.assertRaises(PermissionError):
             build_gameplay_page_view(_snapshot(), "u_outsider")
+
+    def test_trial_voting_marks_accused_participant_as_on_trial(self) -> None:
+        trial_snapshot = GameDetailsSnapshot(
+            game_id="g-1",
+            room_id="r-1",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=2,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=_snapshot().participants,
+            catalog=_snapshot().catalog,
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_x",
+                murderer_user_id="u_secret",
+                accused_user_id="u_mob",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_police"],
+                vote_deadline_epoch_seconds=1234,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+        )
+        page = build_gameplay_page_view(trial_snapshot, "u_mod")
+        mob_row = next(row for row in page.participant_rows if row.user_id == "u_mob")
+        police_row = next(row for row in page.participant_rows if row.user_id == "u_police")
+        self.assertEqual(mob_row.status_label, "on_trial")
+        self.assertTrue(police_row.is_juror)
+
+    def test_moderator_view_shows_murder_and_conviction_attribution(self) -> None:
+        attribution_snapshot = GameDetailsSnapshot(
+            game_id="g-1",
+            room_id="r-1",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="information",
+            round_number=2,
+            version=3,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="dead",
+                    money_balance=0,
+                    murdered_by_user_id="u_police",
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_merchant",
+                    username="merchant",
+                    faction="Merchant",
+                    role_name="Merchant",
+                    rank=1,
+                    life_state="jailed",
+                    money_balance=260,
+                    accused_by_user_id="u_police",
+                    convicted_by_user_ids=["u_police"],
+                ),
+            ],
+            catalog=_snapshot().catalog,
+            pending_trial=None,
+        )
+        page = build_gameplay_page_view(attribution_snapshot, "u_mod")
+        dead_row = next(row for row in page.participant_rows if row.user_id == "u_mob")
+        jailed_row = next(row for row in page.participant_rows if row.user_id == "u_merchant")
+        self.assertEqual(dead_row.murdered_by_username, "police")
+        self.assertEqual(jailed_row.accused_by_username, "police")
+        self.assertEqual(jailed_row.convicted_by_label, "police")
 
 
 if __name__ == "__main__":

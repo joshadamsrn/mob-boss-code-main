@@ -16,6 +16,7 @@ class MemoryCredentialsOutboundPortImpl(CredentialsOutboundPort):
 
     @classmethod
     def build_default(cls) -> "MemoryCredentialsOutboundPortImpl":
+        repo_root = Path(__file__).resolve().parents[5]
         database_name = "mobboss.sqlite3"
         try:
             if settings.configured:
@@ -24,7 +25,10 @@ class MemoryCredentialsOutboundPortImpl(CredentialsOutboundPort):
                     database_name = str(database.get("NAME", database_name))
         except ImproperlyConfigured:
             pass
-        database_url = f"sqlite:///{Path(database_name)}"
+        database_path = Path(database_name)
+        if not database_path.is_absolute():
+            database_path = repo_root / database_path.name
+        database_url = f"sqlite:///{database_path}"
         return cls(database_credentials=DatabaseCredentialsDTO(database_url=database_url))
 
     @classmethod
@@ -33,4 +37,3 @@ class MemoryCredentialsOutboundPortImpl(CredentialsOutboundPort):
 
     def get_database_credentials(self) -> DatabaseCredentialsDTO:
         return self._database_credentials
-
