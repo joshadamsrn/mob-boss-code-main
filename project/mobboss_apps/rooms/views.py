@@ -193,7 +193,6 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
         can_launch = actor_is_moderator and not is_view_as_mode and is_lobby and has_min_players and under_capacity and all_joined_ready
         dev_launch_override_active = container.room_dev_mode and launch_min_players != 7
         room_state_poll_interval_seconds = container.room_state_poll_interval_seconds
-        room_auto_shuffle_interval_seconds = container.room_auto_shuffle_interval_seconds
         waitlist = []
         dev_seat_user_ids = [member.user_id for member in room.members if _is_dev_seat_user_id(member.user_id)]
         dev_seat_members = [
@@ -278,7 +277,6 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 "dev_seat_members": dev_seat_members,
                 "view_tabs": view_tabs,
                 "room_state_poll_interval_seconds": room_state_poll_interval_seconds,
-                "room_auto_shuffle_interval_seconds": room_auto_shuffle_interval_seconds,
             },
         )
     except Exception as exc:

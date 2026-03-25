@@ -431,7 +431,7 @@ class GameplayHtmlContextTests(SimpleTestCase):
         merchant_row = next(row for row in page.participant_rows if row.user_id == "u_merchant")
         self.assertEqual(mob_row.role_label, "Faction: Mob / Role: Mob Boss")
         self.assertEqual(merchant_row.role_label, "Role: Merchant")
-        self.assertEqual(captured_context["moderator_latest_jury_usernames"], ["mob", "merchant"])
+        self.assertEqual(captured_context["moderator_latest_jury_usernames"], [])
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
@@ -842,7 +842,7 @@ class GameplayHtmlContextTests(SimpleTestCase):
             room_id=trial_snapshot.room_id,
             moderator_user_id=trial_snapshot.moderator_user_id,
             status=trial_snapshot.status,
-            phase="trial_voting",
+            phase="information",
             round_number=trial_snapshot.round_number,
             version=trial_snapshot.version,
             launched_at_epoch_seconds=trial_snapshot.launched_at_epoch_seconds,
@@ -877,19 +877,7 @@ class GameplayHtmlContextTests(SimpleTestCase):
                 ),
             ],
             catalog=trial_snapshot.catalog,
-            pending_trial=TrialStateSnapshot(
-                murdered_user_id="u_police",
-                murderer_user_id="u_mob",
-                accused_user_id="u_mob",
-                accused_selection_cursor=[],
-                accused_selection_deadline_epoch_seconds=None,
-                jury_user_ids=["u_police"],
-                vote_deadline_epoch_seconds=1000,
-                votes=[],
-                verdict=None,
-                conviction_correct=None,
-                resolution=None,
-            ),
+            pending_trial=None,
         )
 
         class _TrialStubGameplayInboundPort:

@@ -54,10 +54,10 @@
                                 <option value="{{ participant.user_id }}">{{ participant.username }}</option>
                             {% endfor %}
                         </select>
-                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Use Intimidation</button>
+                        <button type="submit" class="btn btn-dark btn-sm align-self-start">Arm Intimidation</button>
                     </form>
                 {% else %}
-                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability is only available during an active trial.</div>
+                    <div class="alert alert-secondary py-2 px-3 mb-0">This ability can only be armed during Information phase.</div>
                 {% endif %}
             {% elif superpower_panel.kind == "underboss" %}
                 {% if superpower_panel.used %}

@@ -60,6 +60,11 @@ class _StartedGame:
     game_id: str
 
 
+@dataclass
+class _GameDetails:
+    status: str
+
+
 class _StubGameplayInboundPort:
     def __init__(self, game_id: str = "game-1") -> None:
         self.game_id = game_id
@@ -68,6 +73,9 @@ class _StubGameplayInboundPort:
     def start_session_from_room(self, command):
         self.commands.append(command)
         return _StartedGame(game_id=self.game_id)
+
+    def get_game_details(self, game_id: str):
+        return _GameDetails(status="in_progress")
 
 
 class RoomMemoryServiceTests(unittest.TestCase):
@@ -235,7 +243,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         item = next(i for i in details.items if i.classification == "bulletproof_vest")
         self.assertEqual(item.display_name, "Vest")
         self.assertEqual(item.base_price, 450)
-        self.assertEqual(item.image_path, "/static/items/defaults/default_bulletproof_vest.svg")
+        self.assertEqual(item.image_path, "/static/items/defaults/default_bulletproof_vest.png")
         self.assertTrue(item.is_active)
 
         details = self.service.upsert_room_item(

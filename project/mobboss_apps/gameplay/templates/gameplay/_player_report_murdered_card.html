@@ -10,7 +10,7 @@
             <input type="hidden" name="expected_version" value="{{ page.version }}">
             <label for="selfReportMurdererId">Attacker</label>
             <select id="selfReportMurdererId" class="form-select form-select-sm" name="murderer_user_id" required>
-                <option value="">Select living player</option>
+                <option value="">Select attacker</option>
                 {% for participant in self_report_murderer_rows %}
                     <option value="{{ participant.user_id }}">{{ participant.username }}</option>
                 {% endfor %}
@@ -19,9 +19,7 @@
             <select id="selfReportAttackClassification" class="form-select form-select-sm" name="attack_classification" required>
                 <option value="" selected disabled>Select weapon</option>
                 <option value="knife">Knife</option>
-                <option value="gun_tier_1">Handgun (Tier 1)</option>
-                <option value="gun_tier_2">Pistol (Tier 2)</option>
-                <option value="gun_tier_3">Revolver (Tier 3)</option>
+                <option value="gun_tier_1">Gun</option>
             </select>
             <button class="btn btn-outline-danger btn-sm mt-3 w-100 w-sm-auto" type="submit">Submit Death Report</button>
         </form>

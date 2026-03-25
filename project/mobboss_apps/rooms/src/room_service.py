@@ -120,12 +120,32 @@ class RoomsService(RoomsInboundPort):
         return self._to_summary(room)
 
     def list_active_rooms(self):
+        return self._list_active_rooms(refresh_gameplay_lifecycle=True)
+
+    def _list_active_rooms(self, *, refresh_gameplay_lifecycle: bool) -> list[RoomSnapshot]:
         summaries = self._repository.list_active_rooms()
         active: list[RoomSnapshot] = []
+        lifecycle_refreshed = False
         for summary in summaries:
             room = self._repository.get_room(summary.room_id)
             if room is None:
                 continue
+            if (
+                refresh_gameplay_lifecycle
+                and
+                room.status == "in_progress"
+                and room.launched_game_id
+                and self._gameplay_inbound_port is not None
+            ):
+                try:
+                    game = self._gameplay_inbound_port.get_game_details(room.launched_game_id)
+                except ValueError:
+                    game = None
+                if game is not None and game.status == "ended":
+                    lifecycle_refreshed = True
+                    room = self._repository.get_room(summary.room_id)
+                    if room is None:
+                        continue
             if self._is_lobby_room_expired(room):
                 closed = self._close_room_and_evict(room)
                 self._repository.save_room(closed)
@@ -135,6 +155,8 @@ class RoomsService(RoomsInboundPort):
                 self._repository.save_room(closed)
                 continue
             active.append(self._to_summary(room))
+        if lifecycle_refreshed and refresh_gameplay_lifecycle:
+            return self._list_active_rooms(refresh_gameplay_lifecycle=False)
         return active
 
     def get_room_details(self, room_id: str) -> RoomDetailsSnapshot:
@@ -324,6 +346,7 @@ class RoomsService(RoomsInboundPort):
         active_items = sum(1 for item in room.items if item.is_active)
         if active_items < MIN_REQUIRED_ROOM_ITEMS:
             raise ValueError(f"At least {MIN_REQUIRED_ROOM_ITEMS} active catalog items are required to launch.")
+        room = self._assign_roles_for_joined_members(room, shuffle=True)
         room = _apply_launch_catalog_pricing(room, participant_count=participant_count)
         if self._gameplay_inbound_port is None:
             game_id = self._repository.reserve_game_id(room.room_id)
@@ -625,7 +648,7 @@ def _build_required_default_items() -> list[RoomItemSnapshot]:
             classification=classification,
             display_name=ITEM_CLASSIFICATION_DISPLAY_NAMES.get(classification, classification),
             base_price=DEFAULT_ROOM_ITEM_BASE_PRICE,
-            image_path=f"/static/items/defaults/default_{classification}.svg",
+            image_path=_default_image_path_for_classification(classification),
             is_active=True,
         )
         for classification in REQUIRED_ROOM_ITEM_CLASSIFICATIONS
@@ -718,17 +741,17 @@ def _round_percentage_price_to_nearest_ten(total_money: int, multiplier: str) ->
 def _default_image_path_for_classification(classification: str) -> str:
     bucket = _classification_price_bucket(classification)
     if bucket == "gun_tier_1":
-        return "/static/items/defaults/default_gun_tier_1.svg"
+        return "/static/items/defaults/default_gun_tier_1.jpg"
     if bucket == "gun_tier_2":
-        return "/static/items/defaults/default_gun_tier_2.svg"
+        return "/static/items/defaults/default_gun_tier_2.jpg"
     if bucket == "gun_tier_3":
-        return "/static/items/defaults/default_gun_tier_3.svg"
+        return "/static/items/defaults/default_gun_tier_3.jpg"
     if bucket == "knife":
-        return "/static/items/defaults/default_knife.svg"
+        return "/static/items/defaults/default_knife.jpg"
     if bucket == "bulletproof_vest":
-        return "/static/items/defaults/default_bulletproof_vest.svg"
+        return "/static/items/defaults/default_bulletproof_vest.png"
     if bucket == "escape_from_jail":
-        return "/static/items/defaults/default_escape_from_jail.svg"
+        return "/static/items/defaults/default_escape_from_jail.jpg"
     return f"/static/items/defaults/default_{classification}.svg"
 
 

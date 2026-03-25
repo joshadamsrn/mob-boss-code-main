@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
+import re
 import time
 from urllib.parse import quote_plus
 
@@ -129,6 +130,10 @@ _ROLE_ABILITY_IMAGE_FILENAMES = {
     "Gun Runner": "gun_runner.png",
     "Supplier": "supplier.png",
 }
+
+
+def _normalize_shot_count_label(display_name: str) -> str:
+    return re.sub(r"\b1\s+shots\b", "1 shot", display_name, flags=re.IGNORECASE)
 _ROLE_ABILITY_METADATA = {
     "Chief of Police": {
         "ability_name": "Police Authority",
@@ -165,12 +170,12 @@ _ROLE_ABILITY_METADATA = {
     },
     "Don": {
         "ability_name": "Intimidation",
-        "description": "Silence one player during a trial. One use.",
-        "status_text": "Available when trial conditions are met.",
+        "description": "Arm one target during information; that player is silenced on the next trial. One use.",
+        "status_text": "Available during the Information phase.",
         "status_tone": "secondary",
         "details": [
-            "Target one living player during trial voting.",
-            "A silenced player cannot speak for the rest of that trial.",
+            "Target one living player other than yourself during the Information phase.",
+            "After the next reported murder starts trial flow, your target is marked silent for that trial.",
         ],
         "implementation_state": "Act here when the window opens.",
     },
@@ -560,24 +565,47 @@ def _build_superpower_panel(
     }
     if role_name == "Don":
         target_rows = []
-        if session.phase == "trial_voting" and pending_trial is not None:
+        if session.phase == "information":
             target_rows = [
                 participant
                 for participant in session.participants
                 if participant.user_id != current_user_id and participant.life_state == "alive"
             ]
+        armed_target = next(
+            (
+                participant
+                for participant in session.participants
+                if participant.user_id == current_participant.power_state.don_silence_target_user_id
+            ),
+            None,
+        )
         return {
             **base_panel,
             "kind": "don",
             "used": current_participant.power_state.don_silence_used,
-            "can_activate": bool(target_rows) and not current_participant.power_state.don_silence_used,
-            "target_rows": sorted(target_rows, key=lambda participant: participant.username.lower()),
-            "status_text": (
-                "Used."
-                if current_participant.power_state.don_silence_used
-                else "Ready during an active trial."
+            "can_activate": (
+                session.phase == "information"
+                and bool(target_rows)
+                and not current_participant.power_state.don_silence_used
             ),
-            "status_tone": "dark" if current_participant.power_state.don_silence_used else "secondary",
+            "target_rows": sorted(target_rows, key=lambda participant: participant.username.lower()),
+            "armed_target_username": armed_target.username if armed_target is not None else "",
+            "status_text": (
+                f"Armed on {armed_target.username}."
+                if current_participant.power_state.don_silence_target_user_id and armed_target is not None
+                else (
+                    "Armed for the next trial."
+                    if current_participant.power_state.don_silence_target_user_id
+                    else (
+                        "Used."
+                        if current_participant.power_state.don_silence_used
+                        else "Ready during Information phase."
+                    )
+                )
+            ),
+            "status_tone": "dark"
+            if current_participant.power_state.don_silence_used and not current_participant.power_state.don_silence_target_user_id
+            else ("info" if current_participant.power_state.don_silence_target_user_id else "secondary"),
             "implementation_state": "Use this panel when the ability is available.",
         }
 
@@ -630,7 +658,7 @@ def _build_superpower_panel(
             target_rows = [
                 {
                     "classification": item.classification,
-                    "display_name": item.display_name,
+                    "display_name": _normalize_shot_count_label(item.display_name),
                     "base_price": item.base_price,
                     "discounted_price": _merchant_wholesale_price(item.base_price),
                 }
@@ -1204,8 +1232,16 @@ def _build_superpower_panel(
 
     if role_name == "Made Man":
         target_rows = sorted(
-            [item for item in session.catalog if item.is_active],
-            key=lambda item: item.display_name.lower(),
+            [
+                {
+                    "classification": item.classification,
+                    "display_name": _normalize_shot_count_label(item.display_name),
+                    "base_price": item.base_price,
+                }
+                for item in session.catalog
+                if item.is_active
+            ],
+            key=lambda item: str(item["display_name"]).lower(),
         )
         active_capture = _active_sergeant_capture_state(
             session,
@@ -1640,6 +1676,18 @@ def _build_felon_escape_panel(
     }
 
 
+def _participant_has_ghost_view(session: GameDetailsSnapshot, participant: ParticipantStateSnapshot) -> bool:
+    if (
+        session.status == "in_progress"
+        and participant.role_name == "Felon"
+        and participant.life_state == "jailed"
+        and session.felon_escape_user_id == participant.user_id
+        and session.felon_escape_expires_at_epoch_seconds is not None
+    ):
+        return False
+    return participant.life_state in {"dead", "jailed"}
+
+
 @login_required(login_url="/auth/")
 def index(request: HttpRequest) -> HttpResponse:
     IndexRequestDTO.from_payload({"method": request.method})
@@ -1761,8 +1809,16 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             and not ghost_view_enabled
         )
         merchant_supply_items = sorted(
-            [item for item in session.catalog if item.is_active],
-            key=lambda item: item.display_name.lower(),
+            [
+                {
+                    "classification": item.classification,
+                    "display_name": _normalize_shot_count_label(item.display_name),
+                    "base_price": item.base_price,
+                }
+                for item in session.catalog
+                if item.is_active
+            ],
+            key=lambda item: str(item["display_name"]).lower(),
         )
         merchant_inventory_items = [] if current_participant is None else list(current_participant.inventory)
         merchant_sale_targets = sorted(
@@ -1837,7 +1893,8 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         is_murder_banner_notice = (
             page.status == "in_progress"
             and page.phase in {"accused_selection", "trial_voting", "boundary_resolution"}
-            and "WAS MURDERED - REPORT IMMEDIATELY TO COURT HOUSE" in trial_result_notice
+            and "WAS MURDERED WITH " in trial_result_notice
+            and "REPORT IMMEDIATELY TO COURT HOUSE" in trial_result_notice
         )
         game_result_notice = ""
         if session.status == "ended" and session.winning_faction:
@@ -1884,7 +1941,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             now_epoch_seconds=now_epoch_seconds,
         )
         moderator_latest_jury_usernames = []
-        if (actor_is_moderator or ghost_view_enabled) and session.latest_jury_log_user_ids:
+        if page.is_moderator and session.latest_jury_log_user_ids:
             moderator_latest_jury_usernames = [
                 participant_name_by_id.get(user_id, user_id) for user_id in session.latest_jury_log_user_ids
             ]
@@ -1938,6 +1995,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                             simulate_actions=simulate_actions_enabled,
                         ),
                         "is_active": participant.user_id == current_user_id,
+                        "is_ghost_view_player": _participant_has_ghost_view(session, participant),
                     }
                 )
         viewed_role_name = ""
@@ -2200,16 +2258,22 @@ def activate_don_silence(request: HttpRequest, game_id: str) -> HttpResponse:
     if request.method != "POST":
         return _redirect_to_game_detail_with_context(request, game_id=game_id)
     try:
+        container = get_container()
+        session = container.gameplay_inbound_port.get_game_details(game_id)
+        resolved_actor_user_id = _resolve_action_user_id(
+            request,
+            session=session,
+            dev_mode_enabled=container.room_dev_mode,
+        )
         dto = ActivateDonSilenceRequestDTO.from_payload(
             {
                 "method": request.method,
                 "game_id": game_id,
-                "actor_user_id": _current_user_id(request),
+                "actor_user_id": resolved_actor_user_id,
                 "target_user_id": request.POST.get("target_user_id", ""),
                 "expected_version": request.POST.get("expected_version", ""),
             }
         )
-        container = get_container()
         container.gameplay_inbound_port.activate_don_silence(
             ActivateDonSilenceCommand(
                 game_id=dto.game_id,
@@ -2218,7 +2282,7 @@ def activate_don_silence(request: HttpRequest, game_id: str) -> HttpResponse:
                 expected_version=dto.expected_version,
             )
         )
-        messages.success(request, "Intimidation used.")
+        messages.success(request, "Intimidation armed.")
     except Exception as exc:
         messages.error(request, str(exc))
     return _redirect_to_game_detail_with_context(request, game_id=game_id)

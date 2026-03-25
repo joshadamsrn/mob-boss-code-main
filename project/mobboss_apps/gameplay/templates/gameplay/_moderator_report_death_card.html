@@ -25,10 +25,9 @@
             </select>
             <label for="moderatorAttackClassification" class="mt-3">Weapon Used</label>
             <select id="moderatorAttackClassification" class="form-select form-select-sm" name="attack_classification" required>
+                <option value="" selected disabled>Select weapon</option>
                 <option value="knife">Knife</option>
-                <option value="gun_tier_1">Handgun (Tier 1)</option>
-                <option value="gun_tier_2">Pistol (Tier 2)</option>
-                <option value="gun_tier_3">Revolver (Tier 3)</option>
+                <option value="gun_tier_1">Gun</option>
             </select>
             <input id="expectedVersionInput" type="hidden" name="expected_version" value="{{ page.version }}">
             <div class="small text-secondary mt-2">Sync check version: <span id="expectedVersionLabel">{{ page.version }}</span>.</div>

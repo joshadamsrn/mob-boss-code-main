@@ -413,6 +413,7 @@ class TrialStateSnapshot:
 @dataclass(frozen=True)
 class ParticipantPowerStateSnapshot:
     don_silence_used: bool = False
+    don_silence_target_user_id: str | None = None
     underboss_jury_override_used: bool = False
     kingpin_reduced_trial_keys: list[str] = field(default_factory=list)
     street_thug_steal_used: bool = False
@@ -526,6 +527,7 @@ class GameDetailsSnapshot:
     participants: list[ParticipantStateSnapshot]
     catalog: list[CatalogItemStateSnapshot]
     pending_trial: TrialStateSnapshot | None
+    last_progressed_at_epoch_seconds: int | None = None
     ledger: LedgerStateSnapshot = field(default_factory=lambda: LedgerStateSnapshot(circulating_currency_baseline=0))
     current_police_leader_user_id: str | None = None
     current_mob_leader_user_id: str | None = None

@@ -2,6 +2,56 @@
 
 {% block title %}Game | {{ page.game_id }}{% endblock %}
 
+{% block head_extra %}
+<style>
+  .participant-notes-options {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .participant-note-button {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+
+  .merchant-balance-row {
+    align-items: flex-start;
+  }
+
+  .merchant-balance-block {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .role-ability-copy {
+    text-align: left !important;
+  }
+
+  .role-ability-copy-head {
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  .action-required-list {
+    margin-bottom: 0;
+    padding-left: 1.1rem;
+  }
+
+  .offer-response-actions {
+    justify-content: center !important;
+    align-items: center !important;
+    flex-direction: row !important;
+  }
+
+  .offer-response-actions > * {
+    width: auto !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="container page-shell py-3 py-md-4">
     <div class="card hero-card mb-3">
@@ -33,7 +83,7 @@
                 <div class="small text-uppercase text-secondary mb-2">Dev View Tabs</div>
                 <div class="mobile-chip-row">
                     {% for tab in view_tabs %}
-                        <a href="{{ tab.href }}" class="btn btn-xs {% if tab.is_active %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                        <a href="{{ tab.href }}" class="btn btn-xs {% if tab.is_ghost_view_player %}{% if tab.is_active %}btn-secondary{% else %}btn-outline-danger{% endif %}{% else %}{% if tab.is_active %}btn-dark{% else %}btn-outline-dark{% endif %}{% endif %}">
                             {{ tab.label }}
                         </a>
                     {% endfor %}
@@ -78,6 +128,34 @@
     {% include "gameplay/_jury_voting_card.html" with page=page %}
 
     <div id="gameMutationNotice" class="alert d-none py-2 px-3" role="status" aria-live="polite"></div>
+    <div
+        id="actionRequiredPrompt"
+        class="alert alert-warning py-2 px-3 mb-3 {% if not can_submit_accused_selection and not jury_prompt.can_vote and not jury_prompt.tamper_can_vote and not incoming_sale_offers and not incoming_gift_offers and not incoming_money_gift_offers %}d-none{% endif %}"
+        role="status"
+        aria-live="polite"
+    >
+        <div class="fw-semibold">Action Required</div>
+        <ul id="actionRequiredPromptList" class="small action-required-list mt-1">
+            {% if can_submit_accused_selection %}
+                <li><a class="alert-link" href="#accusedSelectionCard">Submit accused selection now.</a></li>
+            {% endif %}
+            {% if jury_prompt.can_vote %}
+                <li><a class="alert-link" href="#juryDutyCard">Submit your jury vote now.</a></li>
+            {% endif %}
+            {% if jury_prompt.tamper_can_vote %}
+                <li><a class="alert-link" href="#juryDutyCard">Submit your tamper vote now.</a></li>
+            {% endif %}
+            {% if incoming_sale_offers %}
+                <li><a class="alert-link" href="{% if is_current_user_merchant %}#merchantInventoryCard{% else %}#playerWalletCard{% endif %}">Respond to your incoming purchase requests.</a></li>
+            {% endif %}
+            {% if incoming_gift_offers %}
+                <li><a class="alert-link" href="{% if is_current_user_merchant %}#merchantInventoryCard{% else %}#playerWalletCard{% endif %}">Respond to your incoming item gifts.</a></li>
+            {% endif %}
+            {% if incoming_money_gift_offers %}
+                <li><a class="alert-link" href="{% if is_current_user_merchant %}#merchantInventoryCard{% else %}#playerWalletCard{% endif %}">Respond to your incoming money gifts.</a></li>
+            {% endif %}
+        </ul>
+    </div>
 
     {% if ghost_view_enabled %}
         <div class="alert alert-dark py-2 px-3">
@@ -137,9 +215,9 @@
             <strong id="felonEscapeCountdownValue" data-custody-expiry-epoch="{{ felon_escape_panel.expires_at_epoch_seconds|default:'' }}">--</strong>
         </div>
     </div>
-    {% if actor_is_moderator and moderator_latest_jury_usernames or ghost_view_enabled and moderator_latest_jury_usernames %}
+    {% if page.is_moderator and moderator_latest_jury_usernames %}
         <div class="alert alert-secondary py-2 px-3 mb-3">
-            <div class="fw-semibold mb-1">{% if ghost_view_enabled %}Most Recent Jury (Observer){% else %}Most Recent Jury (Moderator){% endif %}</div>
+            <div class="fw-semibold mb-1">Most Recent Jury (Moderator)</div>
             <ul class="small mb-0 ps-3">
                 {% for username in moderator_latest_jury_usernames %}
                     <li>{{ username }}</li>
@@ -175,7 +253,7 @@
         <div class="mb-3">
             <form method="post" action="/games/{{ page.game_id }}/exit" class="d-inline">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-dark btn-sm">
+                <button id="exitGameButton" type="submit" class="btn btn-danger btn-sm w-100 w-sm-auto">
                     {% if actor_is_moderator %}Exit Game And Close Room{% else %}Exit Game{% endif %}
                 </button>
             </form>
@@ -390,6 +468,9 @@
     const planList = document.getElementById("gamePlanList");
     const pendingTrialPanel = document.getElementById("pendingTrialPanel");
     const mutationNotice = document.getElementById("gameMutationNotice");
+    const actionRequiredPrompt = document.getElementById("actionRequiredPrompt");
+    const actionRequiredPromptList = document.getElementById("actionRequiredPromptList");
+    const offerResponseCardId = document.getElementById("merchantInventoryCard") ? "merchantInventoryCard" : "playerWalletCard";
     const protectiveCustodyPanel = document.getElementById("protectiveCustodyPanel");
     const protectiveCustodyMessage = document.getElementById("protectiveCustodyMessage");
     const protectiveCustodyCountdownValue = document.getElementById("protectiveCustodyCountdownValue");
@@ -420,6 +501,9 @@
     let manualAdvanceInFlight = false;
     let timeoutAdvanceInFlight = false;
     let currentSnapshot = null;
+    let previousActionState = null;
+    let actionAudioContext = null;
+    let actionAudioUnlocked = false;
     const participantNotesStorageKey = `game:${gameId}:participant-faction-notes:${viewerUserId}`;
 
     const escapeHtml = (value) => String(value)
@@ -428,6 +512,164 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+
+    const pluralize = (count, singular, plural) => (count === 1 ? singular : plural);
+
+    const toPositiveCount = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+    };
+
+    const getActionPromptState = (snapshot) => {
+      const trial = snapshot && snapshot.pending_trial ? snapshot.pending_trial : null;
+      const phase = snapshot && snapshot.phase ? snapshot.phase : "";
+      const status = snapshot && snapshot.status ? snapshot.status : "";
+      const votes = trial && Array.isArray(trial.votes) ? trial.votes : [];
+      const hasJuryVote = votes.some((vote) => (
+        String(vote && vote.voter_user_id ? vote.voter_user_id : "") === viewerUserId
+        && String(vote && vote.vote_slot ? vote.vote_slot : "jury") === "jury"
+      ));
+      const hasTamperVote = votes.some((vote) => (
+        String(vote && vote.voter_user_id ? vote.voter_user_id : "") === viewerUserId
+        && String(vote && vote.vote_slot ? vote.vote_slot : "") === "tamper"
+      ));
+      const accusedCursor = trial && Array.isArray(trial.accused_selection_cursor) ? trial.accused_selection_cursor : [];
+      const juryUserIds = trial && Array.isArray(trial.jury_user_ids) ? trial.jury_user_ids : [];
+
+      return {
+        canSubmitAccusedSelection: (
+          status === "in_progress"
+          && phase === "accused_selection"
+          && accusedCursor.length > 0
+          && String(accusedCursor[0]) === viewerUserId
+        ),
+        canSubmitJuryVote: (
+          status === "in_progress"
+          && phase === "trial_voting"
+          && juryUserIds.includes(viewerUserId)
+          && Number(trial && trial.vote_deadline_epoch_seconds ? trial.vote_deadline_epoch_seconds : 0) > 0
+          && !hasJuryVote
+        ),
+        canSubmitTamperVote: (
+          status === "in_progress"
+          && phase === "trial_voting"
+          && String(trial && trial.gangster_tamper_actor_user_id ? trial.gangster_tamper_actor_user_id : "") === viewerUserId
+          && Number(trial && trial.gangster_tamper_vote_deadline_epoch_seconds ? trial.gangster_tamper_vote_deadline_epoch_seconds : 0) > 0
+          && !hasTamperVote
+        ),
+        incomingSaleOffersCount: toPositiveCount(Array.isArray(snapshot && snapshot.incoming_sale_offers) ? snapshot.incoming_sale_offers.length : 0),
+        incomingGiftOffersCount: toPositiveCount(Array.isArray(snapshot && snapshot.incoming_gift_offers) ? snapshot.incoming_gift_offers.length : 0),
+        incomingMoneyGiftOffersCount: toPositiveCount(Array.isArray(snapshot && snapshot.incoming_money_gift_offers) ? snapshot.incoming_money_gift_offers.length : 0),
+      };
+    };
+
+    const renderActionRequiredPrompt = (state) => {
+      if (!actionRequiredPrompt || !actionRequiredPromptList) {
+        return;
+      }
+      const items = [];
+      if (state.canSubmitAccusedSelection) {
+        items.push(`<li><a class="alert-link" href="#accusedSelectionCard">Submit accused selection now.</a></li>`);
+      }
+      if (state.canSubmitJuryVote) {
+        items.push(`<li><a class="alert-link" href="#juryDutyCard">Submit your jury vote now.</a></li>`);
+      }
+      if (state.canSubmitTamperVote) {
+        items.push(`<li><a class="alert-link" href="#juryDutyCard">Submit your tamper vote now.</a></li>`);
+      }
+      if (state.incomingSaleOffersCount > 0) {
+        const label = `Respond to ${state.incomingSaleOffersCount} purchase ${pluralize(state.incomingSaleOffersCount, "request", "requests")}.`;
+        items.push(`<li><a class="alert-link" href="#${offerResponseCardId}">${escapeHtml(label)}</a></li>`);
+      }
+      if (state.incomingGiftOffersCount > 0) {
+        const label = `Respond to ${state.incomingGiftOffersCount} incoming item ${pluralize(state.incomingGiftOffersCount, "gift", "gifts")}.`;
+        items.push(`<li><a class="alert-link" href="#${offerResponseCardId}">${escapeHtml(label)}</a></li>`);
+      }
+      if (state.incomingMoneyGiftOffersCount > 0) {
+        const label = `Respond to ${state.incomingMoneyGiftOffersCount} incoming money ${pluralize(state.incomingMoneyGiftOffersCount, "gift", "gifts")}.`;
+        items.push(`<li><a class="alert-link" href="#${offerResponseCardId}">${escapeHtml(label)}</a></li>`);
+      }
+
+      if (items.length === 0) {
+        actionRequiredPrompt.classList.add("d-none");
+        actionRequiredPromptList.innerHTML = "";
+        return;
+      }
+      actionRequiredPrompt.classList.remove("d-none");
+      actionRequiredPromptList.innerHTML = items.join("");
+    };
+
+    const ensureActionAudioContext = () => {
+      if (actionAudioContext) {
+        return actionAudioContext;
+      }
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) {
+        return null;
+      }
+      actionAudioContext = new AudioContextCtor();
+      return actionAudioContext;
+    };
+
+    const unlockActionAudio = () => {
+      actionAudioUnlocked = true;
+      const context = ensureActionAudioContext();
+      if (context && context.state === "suspended") {
+        context.resume().catch(() => {});
+      }
+    };
+
+    const playActionDing = () => {
+      if (!actionAudioUnlocked) {
+        return;
+      }
+      const context = ensureActionAudioContext();
+      if (!context) {
+        return;
+      }
+      const startAt = context.currentTime;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(980, startAt);
+      oscillator.frequency.exponentialRampToValueAtTime(740, startAt + 0.12);
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.12, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.18);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.2);
+    };
+
+    const shouldPlayActionDing = (previousState, nextState) => {
+      if (!previousState) {
+        return false;
+      }
+      if (!previousState.canSubmitAccusedSelection && nextState.canSubmitAccusedSelection) {
+        return true;
+      }
+      if (!previousState.canSubmitJuryVote && nextState.canSubmitJuryVote) {
+        return true;
+      }
+      if (!previousState.canSubmitTamperVote && nextState.canSubmitTamperVote) {
+        return true;
+      }
+      if (nextState.incomingSaleOffersCount > previousState.incomingSaleOffersCount) {
+        return true;
+      }
+      if (nextState.incomingGiftOffersCount > previousState.incomingGiftOffersCount) {
+        return true;
+      }
+      if (nextState.incomingMoneyGiftOffersCount > previousState.incomingMoneyGiftOffersCount) {
+        return true;
+      }
+      return false;
+    };
+
+    ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
+      window.addEventListener(eventName, unlockActionAudio, { once: true, passive: true });
+    });
 
     const lifeStateBadgeClass = (lifeState) => {
       if (lifeState === "on_trial") return "text-bg-danger";
@@ -732,7 +974,7 @@
                 <div class="small text-secondary">Notes</div>
                 ${snapshot.status === "ended" && role !== "Hidden" ? `<div class="small text-secondary">${role}</div>` : ""}
               </div>
-              <div class="participant-notes-options d-flex gap-2 flex-wrap">
+              <div class="participant-notes-options">
                 ${noteButtonsMarkup(participant.user_id)}
               </div>
             </div>
@@ -772,13 +1014,12 @@
           return;
         }
         const notes = readParticipantNotes();
-        const clickCount = Math.min(Math.max(Number(event.detail) || 1, 1), 3);
         const currentNote = normalizeParticipantNote(notes[userId]);
         notes[userId] = {
           guess: factionGuess,
-          tone: clickCount,
+          tone: 1,
         };
-        if (factionGuess === "Unknown" && clickCount === 1 && currentNote.guess === "Unknown") {
+        if (factionGuess === "Unknown" && currentNote.guess === "Unknown") {
           delete notes[userId];
         }
         writeParticipantNotes(notes);
@@ -900,6 +1141,12 @@
       updatePlan(data.phase);
       updateReportDeathControls(data);
       renderPendingTrial(data);
+      const actionState = getActionPromptState(data);
+      renderActionRequiredPrompt(actionState);
+      if (shouldPlayActionDing(previousActionState, actionState)) {
+        playActionDing();
+      }
+      previousActionState = actionState;
 
       if (previousSnapshot && (
         previousSnapshot.phase !== data.phase || previousSnapshot.status !== data.status
@@ -1005,7 +1252,7 @@
     };
 
     const refreshSnapshot = async () => {
-      if (document.hidden || inFlight) {
+      if (inFlight) {
         return;
       }
       inFlight = true;
@@ -1097,6 +1344,7 @@
       });
     }
 
+    refreshSnapshot();
     window.setInterval(refreshSnapshot, pollIntervalMs);
     window.addEventListener("focus", refreshSnapshot);
   })();
@@ -1110,6 +1358,219 @@
     window.setTimeout(() => {
       banner.classList.add("d-none");
     }, 60000);
+  })();
+</script>
+<script>
+  (() => {
+    const merchantCard = document.getElementById("merchantInventoryCard");
+    if (!merchantCard) {
+      return;
+    }
+
+    merchantCard.addEventListener("click", (event) => {
+      const toggleButton = event.target.closest(".merchant-resale-toggle");
+      if (toggleButton) {
+        const form = toggleButton.closest(".merchant-resale-form");
+        if (!form) {
+          return;
+        }
+        const editorRow = form.querySelector(".merchant-resale-editor-row");
+        const resaleInput = form.querySelector("input[name='resale_price']");
+        const resaleValueNode = form.closest(".room-member-tile")?.querySelector(".merchant-resale-value");
+        const isOpen = toggleButton.dataset.state === "open";
+
+        if (!isOpen) {
+          if (editorRow) {
+            editorRow.classList.remove("d-none");
+          }
+          toggleButton.dataset.state = "open";
+          toggleButton.textContent = "Save Price";
+          toggleButton.setAttribute("aria-expanded", "true");
+          toggleButton.classList.remove("btn-outline-primary");
+          toggleButton.classList.add("btn-primary");
+          if (resaleInput) {
+            resaleInput.focus();
+            resaleInput.select();
+          }
+          return;
+        }
+
+        if (resaleInput && !resaleInput.reportValidity()) {
+          return;
+        }
+
+        if (resaleValueNode && resaleInput) {
+          resaleValueNode.textContent = resaleInput.value;
+        }
+        if (editorRow) {
+          editorRow.classList.add("d-none");
+        }
+        toggleButton.dataset.state = "closed";
+        toggleButton.textContent = "Set Price";
+        toggleButton.setAttribute("aria-expanded", "false");
+        toggleButton.classList.remove("btn-primary");
+        toggleButton.classList.add("btn-outline-primary");
+        form.submit();
+        return;
+      }
+
+      const saleToggleButton = event.target.closest(".merchant-sale-toggle");
+      if (saleToggleButton) {
+        const saleForm = saleToggleButton.closest(".merchant-sale-form");
+        if (!saleForm) {
+          return;
+        }
+        const buyerEditorRow = saleForm.querySelector(".merchant-sale-editor-row");
+        const buyerSelect = saleForm.querySelector(".merchant-sale-buyer-select");
+        const saleIsOpen = saleToggleButton.dataset.state === "open";
+
+        if (!saleIsOpen) {
+          if (buyerEditorRow) {
+            buyerEditorRow.classList.remove("d-none");
+          }
+          if (buyerSelect) {
+            buyerSelect.required = true;
+            buyerSelect.focus();
+          }
+          saleToggleButton.dataset.state = "open";
+          saleToggleButton.textContent = "Send Offer";
+          saleToggleButton.setAttribute("aria-expanded", "true");
+          return;
+        }
+
+        if (buyerSelect && !buyerSelect.reportValidity()) {
+          return;
+        }
+
+        if (buyerEditorRow) {
+          buyerEditorRow.classList.add("d-none");
+        }
+        if (buyerSelect) {
+          buyerSelect.required = false;
+        }
+        saleToggleButton.dataset.state = "closed";
+        saleToggleButton.textContent = "Sell Item";
+        saleToggleButton.setAttribute("aria-expanded", "false");
+        saleForm.submit();
+        return;
+      }
+
+      const giftToggleButton = event.target.closest(".merchant-gift-toggle");
+      if (!giftToggleButton) {
+        return;
+      }
+      const giftForm = giftToggleButton.closest(".merchant-gift-form");
+      if (!giftForm) {
+        return;
+      }
+      const giftEditorRow = giftForm.querySelector(".merchant-gift-editor-row");
+      const giftSelect = giftForm.querySelector(".merchant-gift-player-select");
+      const giftIsOpen = giftToggleButton.dataset.state === "open";
+
+      if (!giftIsOpen) {
+        if (giftEditorRow) {
+          giftEditorRow.classList.remove("d-none");
+        }
+        if (giftSelect) {
+          giftSelect.required = true;
+          giftSelect.focus();
+        }
+        giftToggleButton.dataset.state = "open";
+        giftToggleButton.textContent = "Send Gift";
+        giftToggleButton.setAttribute("aria-expanded", "true");
+        return;
+      }
+
+      if (giftSelect && !giftSelect.reportValidity()) {
+        return;
+      }
+
+      if (giftEditorRow) {
+        giftEditorRow.classList.add("d-none");
+      }
+      if (giftSelect) {
+        giftSelect.required = false;
+      }
+      giftToggleButton.dataset.state = "closed";
+      giftToggleButton.textContent = "Gift Item";
+      giftToggleButton.setAttribute("aria-expanded", "false");
+      giftForm.submit();
+    });
+  })();
+</script>
+<script>
+  (() => {
+    const walletCard = document.getElementById("playerWalletCard");
+    if (!walletCard) {
+      return;
+    }
+
+    walletCard.addEventListener("click", (event) => {
+      const giftToggleButton = event.target.closest(".player-gift-toggle");
+      if (!giftToggleButton) {
+        return;
+      }
+      const giftForm = giftToggleButton.closest(".player-gift-form");
+      if (!giftForm) {
+        return;
+      }
+      const giftEditorRow = giftForm.querySelector(".player-gift-editor-row");
+      const giftSelect = giftForm.querySelector(".player-gift-player-select");
+      const giftIsOpen = giftToggleButton.dataset.state === "open";
+
+      if (!giftIsOpen) {
+        if (giftEditorRow) {
+          giftEditorRow.classList.remove("d-none");
+        }
+        if (giftSelect) {
+          giftSelect.required = true;
+          giftSelect.focus();
+        }
+        giftToggleButton.dataset.state = "open";
+        giftToggleButton.textContent = "Send Gift";
+        giftToggleButton.setAttribute("aria-expanded", "true");
+        return;
+      }
+
+      if (giftSelect && !giftSelect.reportValidity()) {
+        return;
+      }
+
+      if (giftEditorRow) {
+        giftEditorRow.classList.add("d-none");
+      }
+      if (giftSelect) {
+        giftSelect.required = false;
+      }
+      giftToggleButton.dataset.state = "closed";
+      giftToggleButton.textContent = "Gift Item";
+      giftToggleButton.setAttribute("aria-expanded", "false");
+      giftForm.submit();
+    });
+  })();
+</script>
+<script>
+  (() => {
+    const gameIsEnded = {% if page.status == "ended" %}true{% else %}false{% endif %};
+    if (!gameIsEnded) {
+      return;
+    }
+    const gameShell = document.querySelector("section.container.page-shell");
+    if (!gameShell) {
+      return;
+    }
+    const exitButton = document.getElementById("exitGameButton");
+    const controls = gameShell.querySelectorAll("button, input, select, textarea");
+    controls.forEach((control) => {
+      if (exitButton && control === exitButton) {
+        control.disabled = false;
+        return;
+      }
+      if (control instanceof HTMLInputElement && control.type === "hidden") {
+        return;
+      }
+      control.disabled = true;
+    });
   })();
 </script>
 {% endblock %}

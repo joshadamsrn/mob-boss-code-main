@@ -31,6 +31,10 @@
   --app-shadow-hard: 0 1rem 2.4rem rgba(0, 0, 0, 0.55);
 }
 
+html {
+  background-color: #0b0f15;
+}
+
 body {
   background:
     radial-gradient(1100px 520px at 8% -16%, rgba(208, 71, 71, 0.15), transparent 55%),
@@ -388,6 +392,20 @@ textarea {
   box-shadow: 0 0 0 0.18rem rgba(61, 162, 255, 0.24);
 }
 
+.form-control[type="file"]::file-selector-button {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+  background-color: #fff !important;
+  opacity: 1;
+}
+
+.form-control[type="file"]::-webkit-file-upload-button {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+  background-color: #fff !important;
+  opacity: 1;
+}
+
 .form-check-input {
   background-color: rgba(11, 18, 27, 0.9);
   border-color: rgba(114, 137, 164, 0.6);
@@ -578,6 +596,26 @@ hr {
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
+}
+
+.room-summary-action-btn {
+  min-height: 2.65rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.room-summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.room-summary-badges .badge {
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.72rem;
 }
 
 .room-member-tile,
@@ -828,9 +866,22 @@ hr {
   cursor: pointer;
   display: inline-flex;
   gap: 0.45rem;
+  justify-content: flex-start;
   line-height: 1;
+  min-height: 2.5rem;
   padding: 0.35rem 0.65rem;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+
+.participant-notes-options {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.participant-note-button > span:last-child {
+  white-space: nowrap;
 }
 
 .participant-note-button:hover {
@@ -939,7 +990,7 @@ hr {
   }
 
   .app-main {
-    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .app-user-menu .ms-1 {
@@ -979,12 +1030,7 @@ hr {
   }
 
   .dropdown-menu {
-    position: fixed !important;
-    top: auto !important;
-    left: 0.75rem !important;
-    right: 0.75rem !important;
-    bottom: calc(5.8rem + env(safe-area-inset-bottom, 0px)) !important;
-    transform: none !important;
+    min-width: 12rem;
   }
 
   .room-summary-card .badge {
@@ -1001,10 +1047,14 @@ hr {
   }
 
   .room-summary-head {
-    --room-head-slot-width: 6.7rem;
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 0.75rem;
+  }
+
+  .room-title-block {
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
 
   .room-summary-head-has-launch {
@@ -1019,9 +1069,42 @@ hr {
     justify-content: stretch;
   }
 
+  .room-leave-slot {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .room-launch-slot {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .room-leave-slot + .room-launch-slot {
+    grid-column: 2;
+  }
+
   .room-leave-slot form,
   .room-launch-slot form {
     width: 100%;
+  }
+
+  .room-summary-action-btn {
+    width: 100%;
+  }
+
+  .room-summary-badges {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .room-summary-badges .badge {
+    width: 100%;
+    text-align: center;
+  }
+
+  .room-summary-badge-readiness {
+    grid-column: 1 / -1;
   }
 
   .room-role-money {
@@ -1063,14 +1146,14 @@ hr {
   }
 
   .role-ability-copy {
-    text-align: center;
+    text-align: left;
   }
 
   .role-ability-copy-head {
     flex-direction: column;
-    align-items: center !important;
-    justify-content: center;
-    text-align: center;
+    align-items: flex-start !important;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .role-title-card .display-6 {

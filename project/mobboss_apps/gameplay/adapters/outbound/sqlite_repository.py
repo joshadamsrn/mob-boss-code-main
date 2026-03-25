@@ -61,6 +61,7 @@ def _snapshot_to_record(snapshot: GameDetailsSnapshot) -> dict[str, object]:
         "version": snapshot.version,
         "launched_at_epoch_seconds": snapshot.launched_at_epoch_seconds,
         "ended_at_epoch_seconds": snapshot.ended_at_epoch_seconds,
+        "last_progressed_at_epoch_seconds": snapshot.last_progressed_at_epoch_seconds,
         "current_police_leader_user_id": snapshot.current_police_leader_user_id,
         "current_mob_leader_user_id": snapshot.current_mob_leader_user_id,
         "winning_faction": snapshot.winning_faction,
@@ -166,6 +167,7 @@ def _snapshot_to_record(snapshot: GameDetailsSnapshot) -> dict[str, object]:
                 "convicted_by_user_ids": list(participant.convicted_by_user_ids),
                 "power_state": {
                     "don_silence_used": participant.power_state.don_silence_used,
+                    "don_silence_target_user_id": participant.power_state.don_silence_target_user_id,
                     "underboss_jury_override_used": participant.power_state.underboss_jury_override_used,
                     "kingpin_reduced_trial_keys": list(participant.power_state.kingpin_reduced_trial_keys),
                     "street_thug_steal_used": participant.power_state.street_thug_steal_used,
@@ -314,6 +316,7 @@ def _record_to_snapshot(record: dict[str, object]) -> GameDetailsSnapshot:
         version=int(payload["version"]),
         launched_at_epoch_seconds=int(payload["launched_at_epoch_seconds"]),
         ended_at_epoch_seconds=_as_optional_int(payload.get("ended_at_epoch_seconds")),
+        last_progressed_at_epoch_seconds=_as_optional_int(payload.get("last_progressed_at_epoch_seconds")),
         participants=[
             ParticipantStateSnapshot(
                 user_id=str(participant["user_id"]),
@@ -471,6 +474,7 @@ def _to_power_state_snapshot(payload: object) -> ParticipantPowerStateSnapshot:
         return ParticipantPowerStateSnapshot()
     return ParticipantPowerStateSnapshot(
         don_silence_used=bool(payload.get("don_silence_used")),
+        don_silence_target_user_id=_as_optional_str(payload.get("don_silence_target_user_id")),
         underboss_jury_override_used=bool(payload.get("underboss_jury_override_used")),
         kingpin_reduced_trial_keys=[str(value) for value in payload.get("kingpin_reduced_trial_keys", [])],
         street_thug_steal_used=bool(payload.get("street_thug_steal_used")),

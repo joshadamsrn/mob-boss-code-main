@@ -10,6 +10,8 @@ from django.core.management.base import BaseCommand, CommandError
 
 from project.mobboss_apps.mobboss.composition import get_container
 
+INACTIVITY_AUTO_END_SECONDS = 24 * 60 * 60
+
 
 @dataclass(frozen=True)
 class _StaleRoom:
@@ -27,7 +29,7 @@ class _StaleGameplay:
 
 class Command(BaseCommand):
     help = (
-        "Clear stale in-progress rooms/gameplay sessions. "
+        "Clear stale in-progress rooms/gameplay sessions, including 24h inactivity. "
         "Dry-run by default; pass --apply to persist updates."
     )
 
@@ -50,8 +52,9 @@ class Command(BaseCommand):
         conn.row_factory = sqlite3.Row
 
         try:
-            stale_rooms = _find_stale_in_progress_rooms(conn)
-            stale_gameplay = _find_stale_in_progress_gameplay_sessions(conn)
+            now_epoch_seconds = int(datetime.now(tz=timezone.utc).timestamp())
+            stale_rooms = _find_stale_in_progress_rooms(conn, now_epoch_seconds=now_epoch_seconds)
+            stale_gameplay = _find_stale_in_progress_gameplay_sessions(conn, now_epoch_seconds=now_epoch_seconds)
 
             self.stdout.write(
                 f"Detected stale lifecycle records: {len(stale_rooms)} room(s), {len(stale_gameplay)} gameplay session(s)."
@@ -82,7 +85,7 @@ class Command(BaseCommand):
             conn.close()
 
 
-def _find_stale_in_progress_rooms(conn: sqlite3.Connection) -> list[_StaleRoom]:
+def _find_stale_in_progress_rooms(conn: sqlite3.Connection, *, now_epoch_seconds: int) -> list[_StaleRoom]:
     rows = conn.execute(
         """
         SELECT room_id, launched_game_id
@@ -100,7 +103,7 @@ def _find_stale_in_progress_rooms(conn: sqlite3.Connection) -> list[_StaleRoom]:
             continue
 
         session = conn.execute(
-            "SELECT status FROM gameplay_sessions WHERE game_id = ?",
+            "SELECT status, payload_json FROM gameplay_sessions WHERE game_id = ?",
             (launched_game_id,),
         ).fetchone()
         if session is None:
@@ -120,14 +123,26 @@ def _find_stale_in_progress_rooms(conn: sqlite3.Connection) -> list[_StaleRoom]:
                     reason="linked_gameplay_already_ended",
                 )
             )
+            continue
+
+        payload = json.loads(str(session["payload_json"]))
+        last_progressed_at = _last_progressed_at_epoch_seconds(payload)
+        if now_epoch_seconds - last_progressed_at >= INACTIVITY_AUTO_END_SECONDS:
+            stale.append(
+                _StaleRoom(
+                    room_id=room_id,
+                    launched_game_id=str(launched_game_id),
+                    reason="linked_gameplay_inactive_24h",
+                )
+            )
 
     return stale
 
 
-def _find_stale_in_progress_gameplay_sessions(conn: sqlite3.Connection) -> list[_StaleGameplay]:
+def _find_stale_in_progress_gameplay_sessions(conn: sqlite3.Connection, *, now_epoch_seconds: int) -> list[_StaleGameplay]:
     rows = conn.execute(
         """
-        SELECT game_id, room_id
+        SELECT game_id, room_id, payload_json
         FROM gameplay_sessions
         WHERE status = 'in_progress'
         """
@@ -137,6 +152,12 @@ def _find_stale_in_progress_gameplay_sessions(conn: sqlite3.Connection) -> list[
     for row in rows:
         game_id = str(row["game_id"])
         room_id = str(row["room_id"])
+        payload = json.loads(str(row["payload_json"]))
+        last_progressed_at = _last_progressed_at_epoch_seconds(payload)
+        if now_epoch_seconds - last_progressed_at >= INACTIVITY_AUTO_END_SECONDS:
+            stale.append(_StaleGameplay(game_id=game_id, room_id=room_id, reason="inactive_24h"))
+            continue
+
         room = conn.execute(
             "SELECT status, launched_game_id FROM rooms WHERE room_id = ?",
             (room_id,),
@@ -199,7 +220,9 @@ def _end_gameplay_session(conn: sqlite3.Connection, game_id: str) -> None:
     payload["status"] = "ended"
     payload["phase"] = "ended"
     payload["version"] = int(row["version"]) + 1
-    payload.setdefault("ended_at_epoch_seconds", int(datetime.now(tz=timezone.utc).timestamp()))
+    now_epoch_seconds = int(datetime.now(tz=timezone.utc).timestamp())
+    payload.setdefault("ended_at_epoch_seconds", now_epoch_seconds)
+    payload["last_progressed_at_epoch_seconds"] = now_epoch_seconds
 
     conn.execute(
         """
@@ -212,3 +235,10 @@ def _end_gameplay_session(conn: sqlite3.Connection, game_id: str) -> None:
         """,
         (payload["version"], json.dumps(payload, sort_keys=True), game_id),
     )
+
+
+def _last_progressed_at_epoch_seconds(payload: dict[str, Any]) -> int:
+    value = payload.get("last_progressed_at_epoch_seconds")
+    if value is not None:
+        return int(value)
+    return int(payload.get("launched_at_epoch_seconds", 0))

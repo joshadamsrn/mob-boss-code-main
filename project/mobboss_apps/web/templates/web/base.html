@@ -4,6 +4,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0f15">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0b0f15">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f15">
     <title>{% block title %}Mob Boss{% endblock %}</title>
     <meta name="description" content="Mob Boss multiplayer strategy game experience.">
     {% render_bundle 'web' 'css' %}
@@ -55,31 +58,6 @@
 <main class="app-main">
     {% block content %}{% endblock %}
 </main>
-
-{% if request.user.is_authenticated %}
-    <nav class="app-bottom-nav d-md-none" aria-label="Primary">
-        <a href="/" class="app-bottom-tab{% if request.path == '/' %} is-active{% endif %}">
-            <i class="bi bi-grid-1x2-fill" aria-hidden="true"></i>
-            <span>Lobby</span>
-        </a>
-        {% if request.session.active_room_id %}
-            <a href="/rooms/{{ request.session.active_room_id }}/" class="app-bottom-tab{% if '/rooms/' in request.path %} is-active{% endif %}">
-                <i class="bi bi-people-fill" aria-hidden="true"></i>
-                <span>Room</span>
-            </a>
-        {% endif %}
-        {% if request.session.active_game_id %}
-            <a href="/games/{{ request.session.active_game_id }}/" class="app-bottom-tab{% if '/games/' in request.path %} is-active{% endif %}">
-                <i class="bi bi-controller" aria-hidden="true"></i>
-                <span>Game</span>
-            </a>
-        {% endif %}
-        <a href="/options/" class="app-bottom-tab{% if '/options/' in request.path %} is-active{% endif %}">
-            <i class="bi bi-sliders" aria-hidden="true"></i>
-            <span>Options</span>
-        </a>
-    </nav>
-{% endif %}
 
 {% if messages %}
     <div class="toast-container position-fixed bottom-0 end-0 p-3 me-3 mb-3" style="z-index: 1080;">

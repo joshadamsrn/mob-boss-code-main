@@ -144,6 +144,26 @@ class GameplayServiceTests(unittest.TestCase):
         fetched = self.service.get_game_details(snapshot.game_id)
         self.assertEqual(fetched.game_id, snapshot.game_id)
 
+    def test_start_session_sets_last_progress_timestamp(self) -> None:
+        command = _build_start_session_command("start_session_information.json")
+
+        snapshot = self.service.start_session_from_room(command)
+
+        self.assertEqual(snapshot.last_progressed_at_epoch_seconds, command.launched_at_epoch_seconds)
+
+    def test_get_game_details_auto_ends_session_after_24_hours_of_inactivity(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_police_alive.json"))
+        self.now_epoch_seconds = started.launched_at_epoch_seconds + (24 * 60 * 60) + 1
+
+        updated = self.service.get_game_details(started.game_id)
+
+        self.assertEqual(updated.status, "ended")
+        self.assertEqual(updated.phase, "ended")
+        self.assertEqual(updated.ended_at_epoch_seconds, self.now_epoch_seconds)
+        self.assertEqual(updated.last_progressed_at_epoch_seconds, self.now_epoch_seconds)
+        self.assertEqual(updated.latest_public_notice, "Game automatically ended after 24 hours of inactivity.")
+        self.assertEqual(self.room_lifecycle.calls, [("r-2", started.game_id)])
+
     def test_arms_dealer_starts_with_one_tier_one_gun_taken_from_supply(self) -> None:
         snapshot = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
@@ -3252,7 +3272,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(room_a_fresh.room_id, "r-alpha")
         self.assertEqual(room_b_investigation.room_id, "r-bravo")
 
-    def test_don_can_silence_player_during_trial(self) -> None:
+    def test_don_can_arm_silence_and_auto_apply_on_next_reported_murder(self) -> None:
         started = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
                 room_id="r-don",
@@ -3269,15 +3289,38 @@ class GameplayServiceTests(unittest.TestCase):
                 catalog=[],
             )
         )
-        after_report = self.service.report_death(
-            ReportDeathCommand(
+
+        armed = self.service.activate_don_silence(
+            ActivateDonSilenceCommand(
                 game_id=started.game_id,
-                murdered_user_id="u_detective",
-                reported_by_user_id="u_mod",
-                attack_classification="knife",
+                actor_user_id="u_don",
+                target_user_id="u_deputy",
                 expected_version=started.version,
             )
         )
+        don_after_arm = next(participant for participant in armed.participants if participant.user_id == "u_don")
+        self.assertTrue(don_after_arm.power_state.don_silence_used)
+        self.assertEqual(don_after_arm.power_state.don_silence_target_user_id, "u_deputy")
+
+        after_report = self.service.report_death(
+            ReportDeathCommand(
+                game_id=armed.game_id,
+                murdered_user_id="u_detective",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                expected_version=armed.version,
+            )
+        )
+        don_after_report = next(participant for participant in after_report.participants if participant.user_id == "u_don")
+        self.assertIsNone(don_after_report.power_state.don_silence_target_user_id)
+        self.assertIn("u_deputy", after_report.pending_trial.silenced_user_ids)
+        self.assertTrue(
+            any(
+                "seems to be afraid to testify at court" in event.message
+                for event in after_report.notification_feed
+            )
+        )
+
         after_selection = self.service.submit_accused_selection(
             SubmitAccusedSelectionCommand(
                 game_id=after_report.game_id,
@@ -3293,21 +3336,7 @@ class GameplayServiceTests(unittest.TestCase):
                 expected_version=after_selection.version,
             )
         )
-
-        updated = self.service.activate_don_silence(
-            ActivateDonSilenceCommand(
-                game_id=after_start_voting.game_id,
-                actor_user_id="u_don",
-                target_user_id="u_deputy",
-                expected_version=after_start_voting.version,
-            )
-        )
-
-        don = next(participant for participant in updated.participants if participant.user_id == "u_don")
-        self.assertTrue(don.power_state.don_silence_used)
-        self.assertIn("u_deputy", updated.pending_trial.silenced_user_ids)
-        self.assertTrue(any(event.user_id == "u_deputy" for event in updated.notification_feed))
-        self.assertTrue(any(event.user_id == "u_mod" for event in updated.notification_feed))
+        self.assertIsNotNone(after_start_voting.pending_trial)
 
     def test_underboss_can_replace_juror_once(self) -> None:
         started = self.service.start_session_from_room(
@@ -4247,7 +4276,7 @@ class GameplayServiceTests(unittest.TestCase):
         )
         self.assertEqual(len(offered.pending_sale_offers), 1)
 
-    def test_merchant_can_sell_item_to_supply_for_ninety_percent_of_acquisition(self) -> None:
+    def test_merchant_can_sell_item_to_supply_for_full_acquisition_value(self) -> None:
         started = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
                 room_id="r-supply-buyback",
@@ -4303,7 +4332,7 @@ class GameplayServiceTests(unittest.TestCase):
             )
         )
         merchant_after_sell = next(participant for participant in after_sell.participants if participant.user_id == "u_merchant")
-        self.assertEqual(merchant_after_sell.money_balance, 488)
+        self.assertEqual(merchant_after_sell.money_balance, 500)
         self.assertEqual(len(merchant_after_sell.inventory), 0)
 
     def test_merchant_wins_immediately_when_money_gift_reaches_goal(self) -> None:

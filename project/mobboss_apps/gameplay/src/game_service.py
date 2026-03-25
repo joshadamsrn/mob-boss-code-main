@@ -91,7 +91,7 @@ INSPECTOR_RECORD_VISIBLE_SECONDS = 60
 FELON_ESCAPE_SECONDS = 1800
 GUN_RUNNER_CHARISMA_SECONDS = 180
 MERCHANT_GOAL_ADDITIONAL_PERCENT = 0.40
-SUPPLY_BUYBACK_PERCENT = 0.90
+SUPPLY_BUYBACK_PERCENT = 1.00
 CENTRAL_SUPPLY_HOLDER_ID = "central_supply"
 _GUN_ATTACK_CLASSIFICATIONS = {"gun_tier_1", "gun_tier_2", "gun_tier_3"}
 COP_LAST_THREE_THRESHOLD = 3
@@ -99,6 +99,7 @@ MERCHANT_WHOLESALE_DISCOUNT_PERCENT = 30
 GUN_RUNNER_CHARISMA_BONUS_PERCENT = 30
 SUPPLIER_ACQUIRE_STEAL_PERCENT = 50
 SUPPLIER_ACQUIRE_VALID_TARGET_ROLES = {"Merchant", "Arms Dealer", "Smuggler", "Gun Runner"}
+INACTIVITY_AUTO_END_SECONDS = 24 * 60 * 60
 
 
 class GameplayService(GameplayInboundPort):
@@ -168,6 +169,7 @@ class GameplayService(GameplayInboundPort):
             participants=participants,
             catalog=catalog,
             pending_trial=None,
+            last_progressed_at_epoch_seconds=command.launched_at_epoch_seconds,
             ledger=LedgerStateSnapshot(
                 circulating_currency_baseline=sum(participant.money_balance for participant in participants),
             ),
@@ -193,9 +195,11 @@ class GameplayService(GameplayInboundPort):
         session = self._repository.get_game_session(game_id)
         if session is None:
             raise ValueError("Game session not found.")
-        session = self._resolve_felon_escape_if_needed(session, now_epoch_seconds=self._now_epoch_seconds())
-        session = self._cancel_gangster_tamper_if_needed(session, now_epoch_seconds=self._now_epoch_seconds())
-        session = self._resolve_trial_voting_if_deadline_elapsed(session, now_epoch_seconds=self._now_epoch_seconds())
+        now_epoch_seconds = self._now_epoch_seconds()
+        session = self._resolve_felon_escape_if_needed(session, now_epoch_seconds=now_epoch_seconds)
+        session = self._cancel_gangster_tamper_if_needed(session, now_epoch_seconds=now_epoch_seconds)
+        session = self._resolve_trial_voting_if_deadline_elapsed(session, now_epoch_seconds=now_epoch_seconds)
+        session = self._auto_end_if_inactive(session, now_epoch_seconds=now_epoch_seconds)
         return session
 
     def report_death(self, command: ReportDeathCommand) -> GameDetailsSnapshot:
@@ -329,6 +333,13 @@ class GameplayService(GameplayInboundPort):
                 unavailable_user_ids=unavailable_user_ids,
             )
             accused_selection_cursor = [next_police_leader_user_id] if next_police_leader_user_id else []
+            silenced_user_ids, post_trial_participants, post_trial_notification_feed = _apply_armed_don_silence_for_upcoming_trial(
+                session.participants,
+                accused_selection_cursor=accused_selection_cursor,
+                moderator_user_id=session.moderator_user_id,
+                notification_feed=session.notification_feed,
+                now_epoch_seconds=now_epoch_seconds,
+            )
             pending_trial = TrialStateSnapshot(
                 murdered_user_id=command.murdered_user_id,
                 murderer_user_id=murderer_user_id,
@@ -344,10 +355,12 @@ class GameplayService(GameplayInboundPort):
                 conviction_correct=None,
                 resolution=None if accused_selection_cursor else "no_conviction",
                 accused_by_user_id=None,
+                silenced_user_ids=silenced_user_ids,
             )
             next_phase = cast(GamePhase, "accused_selection" if accused_selection_cursor else "boundary_resolution")
             updated = replace(
                 session,
+                participants=post_trial_participants,
                 pending_trial=pending_trial,
                 phase=next_phase,
                 current_police_leader_user_id=next_police_leader_user_id,
@@ -359,6 +372,7 @@ class GameplayService(GameplayInboundPort):
                 latest_private_notice_message=(
                     "The murder attempt failed because you were under protective custody."
                 ),
+                notification_feed=post_trial_notification_feed,
                 pending_gift_offers=[],
                 pending_money_gift_offers=[],
                 pending_sale_offers=[],
@@ -429,6 +443,13 @@ class GameplayService(GameplayInboundPort):
         )
 
         accused_selection_cursor = [next_police_leader_user_id] if next_police_leader_user_id else []
+        silenced_user_ids, next_participants, post_trial_notification_feed = _apply_armed_don_silence_for_upcoming_trial(
+            next_participants,
+            accused_selection_cursor=accused_selection_cursor,
+            moderator_user_id=session.moderator_user_id,
+            notification_feed=next_notification_feed,
+            now_epoch_seconds=now_epoch_seconds,
+        )
         pending_trial = TrialStateSnapshot(
             murdered_user_id=command.murdered_user_id,
             murderer_user_id=murderer_user_id,
@@ -444,6 +465,7 @@ class GameplayService(GameplayInboundPort):
             conviction_correct=None,
             resolution=None if accused_selection_cursor else "no_conviction",
             accused_by_user_id=None,
+            silenced_user_ids=silenced_user_ids,
         )
         next_phase = cast(GamePhase, "accused_selection" if accused_selection_cursor else "boundary_resolution")
         updated = replace(
@@ -454,11 +476,13 @@ class GameplayService(GameplayInboundPort):
             current_police_leader_user_id=next_police_leader_user_id,
             current_mob_leader_user_id=next_mob_leader_user_id,
             latest_public_notice=(
-                f"{murdered_participant.username.upper()} WAS MURDERED WITH {attack_display_name.upper()} - REPORT IMMEDIATELY TO COURT HOUSE"
+                f"{murdered_participant.username.upper()} WAS MURDERED WITH "
+                f"{'GUN' if _is_gun_attack_classification(command.attack_classification) else 'KNIFE'} "
+                f"- REPORT IMMEDIATELY TO COURT HOUSE"
             ),
             latest_private_notice_user_id=None,
             latest_private_notice_message=None,
-            notification_feed=next_notification_feed,
+            notification_feed=post_trial_notification_feed,
             pending_gift_offers=[],
             pending_money_gift_offers=[],
             pending_sale_offers=[],
@@ -597,23 +621,25 @@ class GameplayService(GameplayInboundPort):
             now_epoch_seconds=now_epoch_seconds,
         )
         actor = _require_active_role_participant(session, user_id=command.actor_user_id, role_name="Don")
-        if session.phase != "trial_voting" or session.pending_trial is None:
-            raise ConflictProblem("Don silence can only be used during trial voting.", code="invalid_state")
+        if session.phase != "information":
+            raise ConflictProblem("Don Intimidation can only be armed during information phase.", code="invalid_state")
         if actor.power_state.don_silence_used:
-            raise ConflictProblem("Don silence has already been used.", code="invalid_state")
+            raise ConflictProblem("Don Intimidation has already been used.", code="invalid_state")
 
         target = next((participant for participant in session.participants if participant.user_id == command.target_user_id), None)
         if target is None or target.life_state != "alive":
-            raise ValueError("Silence target must be an alive participant.")
-
-        silenced_user_ids = list(session.pending_trial.silenced_user_ids)
-        if command.target_user_id not in silenced_user_ids:
-            silenced_user_ids.append(command.target_user_id)
+            raise ValueError("Intimidation target must be an alive participant.")
+        if target.user_id == actor.user_id:
+            raise ValueError("Don cannot target self with Intimidation.")
 
         participants = [
             replace(
                 participant,
-                power_state=replace(participant.power_state, don_silence_used=True),
+                power_state=replace(
+                    participant.power_state,
+                    don_silence_used=True,
+                    don_silence_target_user_id=target.user_id,
+                ),
             )
             if participant.user_id == actor.user_id
             else participant
@@ -623,18 +649,13 @@ class GameplayService(GameplayInboundPort):
         updated = replace(
             session,
             participants=participants,
-            pending_trial=replace(session.pending_trial, silenced_user_ids=silenced_user_ids),
             notification_feed=_append_notifications(
                 session.notification_feed,
                 [
-                    (actor.user_id, f"You used Intimidation on {target.username}."),
-                    (
-                        target.user_id,
-                        "You cannot speak during this trial due to mob intimidation.",
-                    ),
+                    (actor.user_id, f"You armed Intimidation. {target.username} will be silenced on the next trial."),
                     (
                         session.moderator_user_id,
-                        f"Don used Intimidation on {target.username}.",
+                        f"Don armed Intimidation targeting {target.username}.",
                     ),
                 ],
                 now_epoch_seconds=now_epoch_seconds,
@@ -1598,7 +1619,7 @@ class GameplayService(GameplayInboundPort):
             ),
             version=session.version + 1,
         )
-        self._repository.save_game_session(_refresh_ledger(updated))
+        self._save_game_session(session, updated)
         return updated
 
     def _resolve_trial_voting_if_deadline_elapsed(
@@ -1616,7 +1637,7 @@ class GameplayService(GameplayInboundPort):
         updated = self._finalize_trial_voting_if_ready(session, now_epoch_seconds=now_epoch_seconds, allow_timeout=True)
         if updated is session:
             return session
-        self._repository.save_game_session(_refresh_ledger(updated))
+        self._save_game_session(session, updated)
         return updated
 
     def _resolve_felon_escape_if_needed(
@@ -1639,7 +1660,7 @@ class GameplayService(GameplayInboundPort):
                 felon_escape_expires_at_epoch_seconds=None,
                 version=session.version + 1,
             )
-            self._repository.save_game_session(_refresh_ledger(updated))
+            self._save_game_session(session, updated)
             return updated
 
         felon = next((participant for participant in session.participants if participant.user_id == felon_user_id), None)
@@ -1650,7 +1671,7 @@ class GameplayService(GameplayInboundPort):
                 felon_escape_expires_at_epoch_seconds=None,
                 version=session.version + 1,
             )
-            self._repository.save_game_session(_refresh_ledger(updated))
+            self._save_game_session(session, updated)
             return updated
 
         balance_delta = felon.money_balance - 10
@@ -1710,7 +1731,7 @@ class GameplayService(GameplayInboundPort):
         )
         if ledger_entries:
             updated = _append_ledger_entries(updated, ledger_entries)
-        self._repository.save_game_session(_refresh_ledger(updated))
+        self._save_game_session(session, updated)
         return updated
 
     def _finalize_trial_voting_if_ready(
@@ -3074,6 +3095,34 @@ class GameplayService(GameplayInboundPort):
     def _now_epoch_seconds(self) -> int:
         return int(self._now_epoch_seconds_provider())
 
+    def _auto_end_if_inactive(
+        self,
+        session: GameDetailsSnapshot,
+        *,
+        now_epoch_seconds: int,
+    ) -> GameDetailsSnapshot:
+        if session.status != "in_progress":
+            return session
+        last_progressed_at = session.last_progressed_at_epoch_seconds or session.launched_at_epoch_seconds
+        if now_epoch_seconds - last_progressed_at < INACTIVITY_AUTO_END_SECONDS:
+            return session
+
+        updated = replace(
+            session,
+            status="ended",
+            phase="ended",
+            ended_at_epoch_seconds=now_epoch_seconds,
+            latest_public_notice="Game automatically ended after 24 hours of inactivity.",
+            latest_private_notice_user_id=None,
+            latest_private_notice_message=None,
+            pending_gift_offers=[],
+            pending_money_gift_offers=[],
+            pending_sale_offers=[],
+            version=session.version + 1,
+        )
+        self._save_game_session(session, updated)
+        return updated
+
     def _save_game_session(self, previous: GameDetailsSnapshot, updated: GameDetailsSnapshot) -> None:
         final_updated = _resolve_supplier_acquire_state_if_needed(
             updated,
@@ -3084,6 +3133,10 @@ class GameplayService(GameplayInboundPort):
             now_epoch_seconds=self._now_epoch_seconds(),
         )
         final_updated = _refresh_ledger(final_updated)
+        final_updated = replace(
+            final_updated,
+            last_progressed_at_epoch_seconds=self._now_epoch_seconds(),
+        )
         if final_updated is not updated:
             for field in fields(GameDetailsSnapshot):
                 object.__setattr__(updated, field.name, getattr(final_updated, field.name))
@@ -4141,6 +4194,58 @@ def _participant_name_by_id(participants: list[ParticipantStateSnapshot]) -> dic
     return {participant.user_id: participant.username for participant in participants}
 
 
+def _apply_armed_don_silence_for_upcoming_trial(
+    participants: list[ParticipantStateSnapshot],
+    *,
+    accused_selection_cursor: list[str],
+    moderator_user_id: str,
+    notification_feed: list[NotificationEventSnapshot],
+    now_epoch_seconds: int,
+) -> tuple[list[str], list[ParticipantStateSnapshot], list[NotificationEventSnapshot]]:
+    don = next(
+        (
+            participant
+            for participant in participants
+            if participant.role_name == "Don" and participant.power_state.don_silence_target_user_id
+        ),
+        None,
+    )
+    if don is None:
+        return [], participants, notification_feed
+
+    target_user_id = str(don.power_state.don_silence_target_user_id)
+    participants_without_arm = [
+        replace(
+            participant,
+            power_state=replace(participant.power_state, don_silence_target_user_id=None),
+        )
+        if participant.user_id == don.user_id
+        else participant
+        for participant in participants
+    ]
+
+    if not accused_selection_cursor:
+        return [], participants_without_arm, notification_feed
+
+    target = next((participant for participant in participants_without_arm if participant.user_id == target_user_id), None)
+    if target is None or target.life_state != "alive":
+        return [], participants_without_arm, notification_feed
+
+    silence_notice = (
+        f"{target.username} seems to be afraid to testify at court. "
+        f"{target.username} will remain silent during this upcoming trial."
+    )
+    broadcast_pairs = [(participant.user_id, silence_notice) for participant in participants_without_arm]
+    if moderator_user_id not in {participant.user_id for participant in participants_without_arm}:
+        broadcast_pairs.append((moderator_user_id, silence_notice))
+    next_notifications = _append_notifications(
+        notification_feed,
+        broadcast_pairs,
+        now_epoch_seconds=now_epoch_seconds,
+    )
+    return [target.user_id], participants_without_arm, next_notifications
+
+
 def _find_inventory_item(
     participants: list[ParticipantStateSnapshot],
     *,
@@ -4588,7 +4693,15 @@ def _build_starting_inventory_for_role(
 ) -> list[InventoryItemStateSnapshot]:
     if role_name != "Knife Hobo":
         return []
-    knife_catalog_item = next((item for item in catalog if item.classification == "knife"), None)
+    knife_catalog_candidates = [
+        item
+        for item in catalog
+        if item.classification == "knife" or item.classification.startswith("knife_")
+    ]
+    knife_catalog_item = next(
+        iter(sorted(knife_catalog_candidates, key=lambda item: (item.classification, item.base_price))),
+        None,
+    )
     if knife_catalog_item is None:
         return [
             InventoryItemStateSnapshot(

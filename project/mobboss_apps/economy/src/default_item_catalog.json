@@ -6,37 +6,37 @@
       "classification": "knife",
       "display_name": "Knife",
       "base_price": 120,
-      "default_image_path": "/static/items/defaults/default_knife.svg"
+      "default_image_path": "/static/items/defaults/default_knife.jpg"
     },
     {
       "classification": "gun_tier_1",
       "display_name": "Gun Tier I",
       "base_price": 300,
-      "default_image_path": "/static/items/defaults/default_gun_tier_1.svg"
+      "default_image_path": "/static/items/defaults/default_gun_tier_1.jpg"
     },
     {
       "classification": "gun_tier_2",
       "display_name": "Gun Tier II",
       "base_price": 500,
-      "default_image_path": "/static/items/defaults/default_gun_tier_2.svg"
+      "default_image_path": "/static/items/defaults/default_gun_tier_2.jpg"
     },
     {
       "classification": "gun_tier_3",
       "display_name": "Gun Tier III",
       "base_price": 700,
-      "default_image_path": "/static/items/defaults/default_gun_tier_3.svg"
+      "default_image_path": "/static/items/defaults/default_gun_tier_3.jpg"
     },
     {
       "classification": "bulletproof_vest",
       "display_name": "Bulletproof Vest",
       "base_price": 450,
-      "default_image_path": "/static/items/defaults/default_bulletproof_vest.svg"
+      "default_image_path": "/static/items/defaults/default_bulletproof_vest.png"
     },
     {
       "classification": "escape_from_jail",
       "display_name": "Escape From Jail",
       "base_price": 600,
-      "default_image_path": "/static/items/defaults/default_escape_from_jail.svg"
+      "default_image_path": "/static/items/defaults/default_escape_from_jail.jpg"
     }
   ]
 }
