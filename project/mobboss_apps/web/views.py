@@ -2,7 +2,6 @@ from django.http import HttpRequest, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.shortcuts import redirect, render
-import time
 
 from project.mobboss_apps.gameplay.ports.internal import (
     AdvanceAccusedSelectionTimeoutCommand,
@@ -59,7 +58,6 @@ def options(request: HttpRequest) -> HttpResponse:
         active_game_id = active_room.launched_game_id
     moderator_report_death_players = []
     can_report_death = False
-    can_advance_accused_timeout = False
     if active_room is not None and active_room.launched_game_id:
         try:
             container = get_container()
@@ -78,20 +76,8 @@ def options(request: HttpRequest) -> HttpResponse:
                 and session.pending_trial is None
                 and bool(moderator_report_death_players)
             )
-            deadline = (
-                session.pending_trial.accused_selection_deadline_epoch_seconds
-                if session.pending_trial is not None
-                else None
-            )
-            can_advance_accused_timeout = (
-                session.status == "in_progress"
-                and session.phase == "accused_selection"
-                and session.pending_trial is not None
-                and deadline is not None
-                and int(time.time()) >= deadline
-            )
         except Exception:
-            can_advance_accused_timeout = False
+            pass
     return render(
         request,
         "web/options.html",
@@ -99,7 +85,6 @@ def options(request: HttpRequest) -> HttpResponse:
             "active_room": active_room,
             "active_game_id": active_game_id,
             "can_kill_game": active_room is not None and bool(active_room.launched_game_id),
-            "can_advance_accused_timeout": can_advance_accused_timeout,
             "can_report_death": can_report_death,
             "moderator_report_death_players": moderator_report_death_players,
         },

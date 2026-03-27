@@ -130,9 +130,8 @@ class WebOptionsViewTests(SimpleTestCase):
         self.moderator = type("StubUser", (), {"is_authenticated": True, "id": "u_mod", "username": "moderator"})()
         self.player = type("StubUser", (), {"is_authenticated": True, "id": "u_p1", "username": "player1"})()
 
-    @patch("project.mobboss_apps.web.views.time.time", return_value=200)
     @patch("project.mobboss_apps.web.views.get_container")
-    def test_options_shows_advance_timeout_button_for_active_moderator(self, mock_get_container, _mock_time) -> None:
+    def test_options_shows_moderator_controls_for_active_moderator(self, mock_get_container) -> None:
         mock_get_container.return_value = _StubContainerForOptions(moderator_user_id="u_mod")
         request = self.factory.get("/options/")
         request.user = self.moderator
@@ -140,9 +139,7 @@ class WebOptionsViewTests(SimpleTestCase):
         response = options(request)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Advance Accused Timeout")
         self.assertContains(response, "Moderator Report Death")
-        self.assertContains(response, '<button type="submit" class="btn btn-outline-dark btn-sm w-100" >', html=False)
 
     @patch("project.mobboss_apps.web.views.get_container")
     def test_options_hides_moderator_controls_for_non_moderator_user(self, mock_get_container) -> None:
@@ -154,7 +151,6 @@ class WebOptionsViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Kill Game")
-        self.assertNotContains(response, "Advance Accused Timeout")
 
     @patch("project.mobboss_apps.web.views.messages.success")
     @patch("project.mobboss_apps.web.views.messages.error")

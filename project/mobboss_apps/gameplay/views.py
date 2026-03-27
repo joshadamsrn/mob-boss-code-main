@@ -12,6 +12,7 @@ from django.templatetags.static import static
 
 from project.mobboss_apps.gameplay.adapters.internal.page_view_mapper import (
     build_gameplay_page_view,
+    _participant_role_label,
 )
 from project.mobboss_apps.gameplay.ports.internal import (
     ActivateDetectiveInvestigationCommand,
@@ -192,11 +193,11 @@ _ROLE_ABILITY_METADATA = {
     },
     "Kingpin": {
         "ability_name": "Clock Pressure",
-        "description": "Cut the jury vote timer from 10 seconds to 5 seconds. Two uses on separate trials.",
+        "description": "Start a 15-second jury vote timer during an active trial. Two uses on separate trials.",
         "status_text": "Available during active jury voting.",
         "status_tone": "secondary",
         "details": [
-            "Reduce the active jury timer during trial voting.",
+            "Starts a 15-second countdown for jury votes on the current trial.",
             "You may use this on at most two separate trials.",
         ],
         "implementation_state": "Act here when the window opens.",
@@ -369,13 +370,13 @@ _ROLE_ABILITY_METADATA = {
     "Arms Dealer": {
         "ability_name": "Starting Gun Cache",
         "description": "You start the game holding one Tier 1 gun from Central Supply.",
-        "status_text": "Your starting weapon is assigned automatically.",
+        "status_text": "Starting loadout is resolved automatically at game launch.",
         "status_tone": "info",
         "details": [
             "One Tier 1 gun is removed from Central Supply and placed in your inventory when the session starts.",
             "After that, you follow the standard merchant economy, resale, sale-offer, gifting, and money-goal systems.",
         ],
-        "implementation_state": "This role effect is automatic.",
+        "implementation_state": "Automatic start-of-game loadout is live. No manual activation button is needed.",
     },
     "Smuggler": {
         "ability_name": "Smuggle",
@@ -526,6 +527,18 @@ def _viewer_notifications(session, viewer_user_id: str, *, now_epoch_seconds: in
         key=lambda event: event.created_at_epoch_seconds,
         reverse=True,
     )[:8]
+
+
+def _viewer_notification_history(session, viewer_user_id: str) -> list[object]:
+    return sorted(
+        [
+            event
+            for event in session.notification_feed
+            if event.user_id == viewer_user_id
+        ],
+        key=lambda event: event.created_at_epoch_seconds,
+        reverse=True,
+    )
 
 
 def _current_trial_key(session) -> str:
@@ -681,7 +694,7 @@ def _build_superpower_panel(
                 else "Ready during information phase."
             ),
             "status_tone": "dark" if current_participant.power_state.merchant_wholesale_order_used else "secondary",
-            "implementation_state": "Use this card when your role power is available.",
+            "implementation_state": "Activated power is fully usable from this card.",
         }
 
     if role_name == "Deputy":
@@ -723,7 +736,7 @@ def _build_superpower_panel(
                 if current_participant.power_state.deputy_protective_custody_used
                 else ("info" if active_custody is not None else "secondary")
             ),
-            "implementation_state": "Use this card when your role power is available.",
+            "implementation_state": "Activated power is fully usable from this card.",
         }
 
     if role_name == "Captain":
@@ -1029,7 +1042,7 @@ def _build_superpower_panel(
                 if current_participant.power_state.gangster_tamper_used
                 else ("info" if pending_trial is not None and pending_trial.gangster_tamper_target_user_id is not None else "secondary")
             ),
-            "implementation_state": "Use this card when your role power is available.",
+            "implementation_state": "Activated power is fully usable from this card.",
         }
 
     if role_name == "Street Thug":
@@ -1227,7 +1240,7 @@ def _build_superpower_panel(
                     else ("warning" if is_captured else "secondary")
                 )
             ),
-            "implementation_state": "Use this card when your role power is available.",
+            "implementation_state": "Activated power is fully usable from this card.",
         }
 
     if role_name == "Made Man":
@@ -1728,6 +1741,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         participant_name_by_id = {participant.user_id: participant.username for participant in session.participants}
         now_epoch_seconds = int(time.time())
         viewer_notifications = _viewer_notifications(session, current_user_id, now_epoch_seconds=now_epoch_seconds)
+        viewer_notification_history = _viewer_notification_history(session, current_user_id)
         jury_user_ids = list(session.pending_trial.jury_user_ids) if session.pending_trial is not None else []
         current_user_has_voted = (
             session.pending_trial is not None
@@ -1742,6 +1756,10 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 vote.get("user_id") == current_user_id and str(vote.get("vote_slot", "jury")) == "tamper"
                 for vote in session.pending_trial.votes
             )
+        )
+        current_user_is_silenced = (
+            session.pending_trial is not None
+            and current_user_id in session.pending_trial.silenced_user_ids
         )
         is_jury_voting_active = (
             session.pending_trial is not None and session.pending_trial.vote_deadline_epoch_seconds is not None
@@ -1760,7 +1778,9 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "Unknown",
             ),
             "has_voted": current_user_has_voted,
-            "can_vote": is_jury_voting_active and not current_user_has_voted,
+            "can_vote": is_jury_voting_active and not current_user_has_voted and not current_user_is_silenced,
+            "is_silenced": current_user_is_silenced,
+            "silence_notice": "You seem to be afraid to testify at court. You must remain silent during this trial.",
             "show_tamper_vote": page.phase == "trial_voting" and tamper_actor_user_id == current_user_id,
             "tamper_has_voted": current_user_has_tamper_vote,
             "tamper_can_vote": (
@@ -1776,6 +1796,11 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             "waiting_for_moderator": (not is_jury_voting_active),
             "vote_deadline_epoch_seconds": (
                 session.pending_trial.vote_deadline_epoch_seconds if session.pending_trial is not None else None
+            ),
+            "vote_timer_active": (
+                session.pending_trial is not None
+                and session.pending_trial.vote_deadline_epoch_seconds is not None
+                and session.pending_trial.vote_deadline_epoch_seconds > 0
             ),
         }
         moderator_trial_control = {
@@ -1829,20 +1854,26 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             ],
             key=lambda participant: participant.username.lower(),
         )
-        show_player_wallet = (
+        show_player_inventory = (
             current_participant is not None
             and not page.is_moderator
             and not page.is_ghost_view
-            and not is_current_user_merchant
         )
+        show_player_wallet = show_player_inventory and not is_current_user_merchant
+        use_player_phone_layout = bool(show_player_inventory)
         player_money_balance = 0 if current_participant is None else current_participant.money_balance
         merchant_money_balance = 0 if current_participant is None else current_participant.money_balance
         merchant_money_goal = None
         if is_current_user_merchant and current_participant is not None:
-            total_circulating = sum(max(participant.money_balance, 0) for participant in session.participants)
-            goal_bonus = int(total_circulating * MERCHANT_GOAL_ADDITIONAL_PERCENT)
-            merchant_money_goal = getStartingMoney(len(session.participants), current_participant.role_name) + goal_bonus
+            player_count = max(7, min(len(session.participants), 25))
+            goal_bonus = int(session.ledger.circulating_currency_baseline * MERCHANT_GOAL_ADDITIONAL_PERCENT)
+            merchant_money_goal = getStartingMoney(player_count, current_participant.role_name) + goal_bonus
         player_inventory_items = [] if current_participant is None else list(current_participant.inventory)
+        player_role_name = "" if current_participant is None else current_participant.role_name
+        player_role_label = ""
+        if current_participant is not None:
+            player_role_label = _participant_role_label(session, current_participant.user_id, reveal_role=True)
+        player_role_image_url = _role_ability_image_url(player_role_name) if player_role_name else ""
         can_self_report_murder = (
             not page.is_moderator
             and current_participant is not None
@@ -1983,7 +2014,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "is_active": not is_view_as_mode,
             })
             for participant in session.participants:
-                label = participant.username
+                label = participant.role_name
                 if str(participant.user_id).startswith("dev-seat-"):
                     label = f"{label} [Dev]"
                 view_tabs.append(
@@ -2028,6 +2059,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "trial_result_notice": trial_result_notice,
                 "private_trial_notice": private_trial_notice,
                 "viewer_notifications": viewer_notifications,
+                "viewer_notification_history": viewer_notification_history,
                 "is_murder_banner_notice": is_murder_banner_notice,
                 "game_result_notice": game_result_notice,
                 "police_mob_kills_count": session.police_mob_kills_count,
@@ -2040,8 +2072,13 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "merchant_money_balance": merchant_money_balance,
                 "merchant_money_goal": merchant_money_goal,
                 "show_player_wallet": show_player_wallet,
+                "show_player_inventory": show_player_inventory,
+                "use_player_phone_layout": use_player_phone_layout,
                 "player_money_balance": player_money_balance,
                 "player_inventory_items": player_inventory_items,
+                "player_role_name": player_role_name,
+                "player_role_label": player_role_label,
+                "player_role_image_url": player_role_image_url,
                 "can_self_report_murder": can_self_report_murder,
                 "self_report_murderer_rows": self_report_murderer_rows,
                 "player_gift_targets": player_gift_targets,
@@ -2293,16 +2330,22 @@ def activate_underboss_jury_override(request: HttpRequest, game_id: str) -> Http
     if request.method != "POST":
         return _redirect_to_game_detail_with_context(request, game_id=game_id)
     try:
+        container = get_container()
+        session = container.gameplay_inbound_port.get_game_details(game_id)
+        resolved_actor_user_id = _resolve_action_user_id(
+            request,
+            session=session,
+            dev_mode_enabled=container.room_dev_mode,
+        )
         dto = ActivateUnderBossJuryOverrideRequestDTO.from_payload(
             {
                 "method": request.method,
                 "game_id": game_id,
-                "actor_user_id": _current_user_id(request),
+                "actor_user_id": resolved_actor_user_id,
                 "removed_juror_user_id": request.POST.get("removed_juror_user_id", ""),
                 "expected_version": request.POST.get("expected_version", ""),
             }
         )
-        container = get_container()
         container.gameplay_inbound_port.activate_underboss_jury_override(
             ActivateUnderBossJuryOverrideCommand(
                 game_id=dto.game_id,
@@ -2322,15 +2365,21 @@ def activate_kingpin_reduce_clock(request: HttpRequest, game_id: str) -> HttpRes
     if request.method != "POST":
         return _redirect_to_game_detail_with_context(request, game_id=game_id)
     try:
+        container = get_container()
+        session = container.gameplay_inbound_port.get_game_details(game_id)
+        resolved_actor_user_id = _resolve_action_user_id(
+            request,
+            session=session,
+            dev_mode_enabled=container.room_dev_mode,
+        )
         dto = ActivateKingpinReduceClockRequestDTO.from_payload(
             {
                 "method": request.method,
                 "game_id": game_id,
-                "actor_user_id": _current_user_id(request),
+                "actor_user_id": resolved_actor_user_id,
                 "expected_version": request.POST.get("expected_version", ""),
             }
         )
-        container = get_container()
         container.gameplay_inbound_port.activate_kingpin_reduce_clock(
             ActivateKingpinReduceClockCommand(
                 game_id=dto.game_id,
@@ -2338,7 +2387,7 @@ def activate_kingpin_reduce_clock(request: HttpRequest, game_id: str) -> HttpRes
                 expected_version=dto.expected_version,
             )
         )
-        messages.success(request, "Trial clock reduced.")
+        messages.success(request, "15-second jury timer started.")
     except Exception as exc:
         messages.error(request, str(exc))
     return _redirect_to_game_detail_with_context(request, game_id=game_id)
@@ -2349,16 +2398,22 @@ def activate_gangster_tamper(request: HttpRequest, game_id: str) -> HttpResponse
     if request.method != "POST":
         return _redirect_to_game_detail_with_context(request, game_id=game_id)
     try:
+        container = get_container()
+        session = container.gameplay_inbound_port.get_game_details(game_id)
+        resolved_actor_user_id = _resolve_action_user_id(
+            request,
+            session=session,
+            dev_mode_enabled=container.room_dev_mode,
+        )
         dto = ActivateGangsterTamperRequestDTO.from_payload(
             {
                 "method": request.method,
                 "game_id": game_id,
-                "actor_user_id": _current_user_id(request),
+                "actor_user_id": resolved_actor_user_id,
                 "target_user_id": request.POST.get("target_user_id", ""),
                 "expected_version": request.POST.get("expected_version", ""),
             }
         )
-        container = get_container()
         gameplay_inbound = container.gameplay_inbound_port
         gameplay_inbound.activate_gangster_tamper(
             ActivateGangsterTamperCommand(

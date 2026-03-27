@@ -17,12 +17,6 @@
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger btn-sm w-100">Kill Game</button>
                 </form>
-                <form method="post" action="/options/advance-accused-timeout" class="mt-2">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-dark btn-sm w-100" {% if not can_advance_accused_timeout %}disabled{% endif %}>
-                        Advance Accused Timeout
-                    </button>
-                </form>
             {% else %}
                 <div class="text-secondary">No active game is running right now.</div>
             {% endif %}

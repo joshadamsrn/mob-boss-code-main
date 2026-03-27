@@ -4,15 +4,20 @@
             <h2 class="h6 mb-2">Jury Duty</h2>
             <div class="small text-secondary mb-2">You were selected as a juror.</div>
             <div class="small text-secondary mb-3">Accused player: <strong>{{ jury_prompt.accused_username }}</strong></div>
-            {% if jury_prompt.has_voted %}
-                <div class="alert alert-success py-2 px-3 mb-0">Your vote has been submitted.</div>
+            {% if jury_prompt.is_silenced %}
+                <div class="alert alert-warning py-2 px-3 mb-0">{{ jury_prompt.silence_notice }}</div>
+            {% elif jury_prompt.has_voted %}
+                <div class="alert alert-success py-2 px-3 mb-3">Your vote has been submitted.</div>
+                <button type="button" class="btn btn-outline-primary btn-sm dismiss-jury-overlay">Okay</button>
             {% elif jury_prompt.waiting_for_moderator %}
                 <div class="alert alert-info py-2 px-3 mb-0">Waiting for the moderator to start jury voting.</div>
             {% elif jury_prompt.can_vote %}
-                <div class="small text-secondary mb-2">
-                    Vote timer:
-                    <strong id="juryVoteCountdownValue" data-vote-deadline-epoch="{{ jury_prompt.vote_deadline_epoch_seconds|default:'' }}">--</strong>
-                </div>
+                {% if jury_prompt.vote_timer_active %}
+                    <div class="small text-secondary mb-2">
+                        Vote timer:
+                        <strong id="juryVoteCountdownValue" data-vote-deadline-epoch="{{ jury_prompt.vote_deadline_epoch_seconds|default:'' }}">--</strong>
+                    </div>
+                {% endif %}
                 <form method="post" action="/games/{{ page.game_id }}/submit-trial-vote" class="d-flex flex-wrap gap-2">
                     {% csrf_token %}
                     <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
@@ -47,7 +52,7 @@
             {% endif %}
         </div>
     </div>
-    {% if jury_prompt.can_vote and not jury_prompt.has_voted and jury_prompt.vote_deadline_epoch_seconds %}
+    {% if jury_prompt.can_vote and not jury_prompt.has_voted and jury_prompt.vote_timer_active and jury_prompt.vote_deadline_epoch_seconds %}
         <script>
           (() => {
             const countdownNode = document.getElementById("juryVoteCountdownValue");

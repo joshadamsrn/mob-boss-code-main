@@ -77,9 +77,7 @@ from project.mobboss_apps.mobboss.src.starting_money import getStartingMoney
 from project.mobboss_apps.mobboss.src.weights import DEFAULT_WEIGHTS
 from project.mobboss_apps.mobboss.exceptions import ConflictProblem
 
-ACCUSED_SELECTION_TIMEOUT_SECONDS = 15
-TRIAL_VOTING_TIMEOUT_SECONDS = 10
-KINGPIN_VOTE_CLOCK_REDUCTION_SECONDS = 5
+KINGPIN_JURY_TIMER_SECONDS = 15
 GANGSTER_TAMPER_VOTE_TIMEOUT_SECONDS = 10
 PROTECTIVE_CUSTODY_DURATION_SECONDS = 300
 SHERIFF_JURY_LOG_VISIBLE_SECONDS = 60
@@ -345,9 +343,7 @@ class GameplayService(GameplayInboundPort):
                 murderer_user_id=murderer_user_id,
                 accused_user_id=None,
                 accused_selection_cursor=accused_selection_cursor,
-                accused_selection_deadline_epoch_seconds=(
-                    now_epoch_seconds + ACCUSED_SELECTION_TIMEOUT_SECONDS if accused_selection_cursor else None
-                ),
+                accused_selection_deadline_epoch_seconds=None,
                 jury_user_ids=[],
                 vote_deadline_epoch_seconds=None,
                 votes=[],
@@ -455,9 +451,7 @@ class GameplayService(GameplayInboundPort):
             murderer_user_id=murderer_user_id,
             accused_user_id=None,
             accused_selection_cursor=accused_selection_cursor,
-            accused_selection_deadline_epoch_seconds=(
-                now_epoch_seconds + ACCUSED_SELECTION_TIMEOUT_SECONDS if accused_selection_cursor else None
-            ),
+            accused_selection_deadline_epoch_seconds=None,
             jury_user_ids=[],
             vote_deadline_epoch_seconds=None,
             votes=[],
@@ -534,7 +528,7 @@ class GameplayService(GameplayInboundPort):
             next_trial = replace(
                 pending_trial,
                 accused_selection_cursor=next_cursor,
-                accused_selection_deadline_epoch_seconds=now_epoch_seconds + ACCUSED_SELECTION_TIMEOUT_SECONDS,
+                accused_selection_deadline_epoch_seconds=None,
             )
             next_phase = cast(GamePhase, "accused_selection")
         else:
@@ -590,6 +584,8 @@ class GameplayService(GameplayInboundPort):
                 raise ConflictProblem("Jury voting is not active yet.", code="invalid_state")
             if command.voter_user_id not in pending_trial.jury_user_ids:
                 raise PermissionError("Only assigned jury members can vote.")
+            if command.voter_user_id in pending_trial.silenced_user_ids:
+                raise ConflictProblem("You are silenced and cannot vote during this trial.", code="invalid_state")
         elif command.vote_slot == "tamper":
             if pending_trial.gangster_tamper_actor_user_id != command.voter_user_id:
                 raise PermissionError("Only the Gangster can submit the tamper vote.")
@@ -751,7 +747,7 @@ class GameplayService(GameplayInboundPort):
         )
         actor = _require_active_role_participant(session, user_id=command.actor_user_id, role_name="Kingpin")
         if session.phase != "trial_voting" or session.pending_trial is None:
-            raise ConflictProblem("Kingpin clock reduction can only be used during trial voting.", code="invalid_state")
+            raise ConflictProblem("Kingpin jury timer can only be used during trial voting.", code="invalid_state")
         if session.pending_trial.vote_deadline_epoch_seconds is None:
             raise ConflictProblem("Jury voting is not active yet.", code="invalid_state")
 
@@ -760,9 +756,9 @@ class GameplayService(GameplayInboundPort):
         if current_trial_key in reduced_trial_keys:
             raise ConflictProblem("Kingpin has already reduced this trial clock.", code="invalid_state")
         if len(reduced_trial_keys) >= 2:
-            raise ConflictProblem("Kingpin has already used both clock reductions.", code="invalid_state")
+            raise ConflictProblem("Kingpin has already used both jury timers.", code="invalid_state")
 
-        next_deadline = max(now_epoch_seconds, session.pending_trial.vote_deadline_epoch_seconds - KINGPIN_VOTE_CLOCK_REDUCTION_SECONDS)
+        next_deadline = now_epoch_seconds + KINGPIN_JURY_TIMER_SECONDS
         participants = [
             replace(
                 participant,
@@ -782,8 +778,8 @@ class GameplayService(GameplayInboundPort):
             notification_feed=_append_notifications(
                 session.notification_feed,
                 [
-                    (actor.user_id, "You reduced the jury vote clock by 5 seconds."),
-                    (session.moderator_user_id, "Kingpin reduced the jury vote clock by 5 seconds."),
+                    (actor.user_id, "You started a 15-second jury voting timer."),
+                    (session.moderator_user_id, "Kingpin started a 15-second jury voting timer."),
                 ],
                 now_epoch_seconds=now_epoch_seconds,
             ),
@@ -1316,6 +1312,12 @@ class GameplayService(GameplayInboundPort):
             raise ConflictProblem("Asset freeze target must be alive.", code="invalid_state")
 
         frozen_message = _build_asset_freeze_blocked_message(target.username)
+        target_frozen_message = (
+            "Your accounts have been temporarily frozen by the police department for 10 minutes. "
+            "No transactions can go through at this time."
+        )
+        actor_frozen_message = f"You froze {target.username}'s accounts for 10 minutes."
+        moderator_frozen_message = f"Captain froze {target.username}'s accounts for 10 minutes."
         now_epoch_seconds = self._now_epoch_seconds()
         canceled_gift_offers = [
             offer
@@ -1332,14 +1334,16 @@ class GameplayService(GameplayInboundPort):
             for offer in session.pending_sale_offers
             if command.target_user_id in {offer.seller_user_id, offer.buyer_user_id}
         ]
-        canceled_user_ids: set[str] = {command.target_user_id}
+        canceled_user_ids: set[str] = set()
         for offer in canceled_gift_offers:
             canceled_user_ids.update({offer.giver_user_id, offer.receiver_user_id})
         for offer in canceled_money_offers:
             canceled_user_ids.update({offer.giver_user_id, offer.receiver_user_id})
         for offer in canceled_sale_offers:
             canceled_user_ids.update({offer.seller_user_id, offer.buyer_user_id})
-        canceled_user_ids.update({actor.user_id, session.moderator_user_id})
+        canceled_user_ids.discard(target.user_id)
+        canceled_user_ids.discard(actor.user_id)
+        canceled_user_ids.discard(session.moderator_user_id)
 
         updated_participants = [
             replace(
@@ -1373,7 +1377,12 @@ class GameplayService(GameplayInboundPort):
             asset_freeze_expires_at_epoch_seconds=now_epoch_seconds + CAPTAIN_ASSET_FREEZE_SECONDS,
             notification_feed=_append_notifications(
                 session.notification_feed,
-                [(user_id, frozen_message) for user_id in sorted(canceled_user_ids)],
+                [
+                    (actor.user_id, actor_frozen_message),
+                    (target.user_id, target_frozen_message),
+                    (session.moderator_user_id, moderator_frozen_message),
+                    *[(user_id, frozen_message) for user_id in sorted(canceled_user_ids)],
+                ],
                 now_epoch_seconds=now_epoch_seconds,
             ),
             version=session.version + 1,
@@ -1495,6 +1504,7 @@ class GameplayService(GameplayInboundPort):
             or (session.current_mob_leader_user_id == target.user_id and next_mob_leader_user_id is None)
         ):
             release_message = f"{target.username} was court ordered to be released from police custody."
+            target_release_message = "You were court ordered to be released from police custody."
             updated = replace(
                 session,
                 participants=participants_after_use,
@@ -1503,7 +1513,7 @@ class GameplayService(GameplayInboundPort):
                     [
                         (actor.user_id, release_message),
                         (session.moderator_user_id, release_message),
-                        (target.user_id, release_message),
+                        (target.user_id, target_release_message),
                     ],
                     now_epoch_seconds=now_epoch_seconds,
                 ),
@@ -1516,10 +1526,15 @@ class GameplayService(GameplayInboundPort):
             f"{target.username} has been taken into custody by the police department for questioning "
             "and cannot interact with others for 5 minutes."
         )
+        actor_capture_message = f"You took {target.username} into police custody for 5 minutes."
+        target_capture_message = (
+            "You have been taken into custody by the police department for questioning "
+            "and cannot interact with others for 5 minutes."
+        )
         notifications = [
-            (actor.user_id, capture_message),
+            (actor.user_id, actor_capture_message),
             (session.moderator_user_id, capture_message),
-            (target.user_id, capture_message),
+            (target.user_id, target_capture_message),
         ]
         if next_police_leader_user_id != session.current_police_leader_user_id and next_police_leader_user_id is not None:
             notifications.append(
@@ -1577,7 +1592,7 @@ class GameplayService(GameplayInboundPort):
             session,
             pending_trial=replace(
                 session.pending_trial,
-                vote_deadline_epoch_seconds=now_epoch_seconds + TRIAL_VOTING_TIMEOUT_SECONDS,
+                vote_deadline_epoch_seconds=-1,
             ),
             version=session.version + 1,
         )
@@ -1745,6 +1760,11 @@ class GameplayService(GameplayInboundPort):
         if session.phase != "trial_voting" or pending_trial is None:
             return session
         counted_votes = _counted_trial_votes(session, pending_trial, now_epoch_seconds=now_epoch_seconds)
+        counted_jury_votes = [
+            vote
+            for vote in counted_votes
+            if str(vote.get("vote_slot", "jury")) == "jury"
+        ]
         required_vote_count = len(pending_trial.jury_user_ids)
         if len(counted_votes) < required_vote_count and not (
             allow_timeout and _trial_final_vote_deadline_epoch_seconds(pending_trial) is not None
@@ -1753,9 +1773,17 @@ class GameplayService(GameplayInboundPort):
         if len(counted_votes) < required_vote_count and not allow_timeout:
             return session
 
-        guilty_votes = sum(1 for vote in counted_votes if vote.get("vote") == "guilty")
-        innocent_votes = len(counted_votes) - guilty_votes
-        verdict = "guilty" if guilty_votes > innocent_votes else "innocent"
+        no_juror_votes_before_timeout = (
+            allow_timeout
+            and _trial_final_vote_deadline_epoch_seconds(pending_trial) is not None
+            and len(counted_jury_votes) == 0
+        )
+        if no_juror_votes_before_timeout:
+            verdict = "innocent"
+        else:
+            guilty_votes = sum(1 for vote in counted_votes if vote.get("vote") == "guilty")
+            innocent_votes = len(counted_votes) - guilty_votes
+            verdict = "guilty" if guilty_votes > innocent_votes else "innocent"
         next_pending = replace(
             pending_trial,
             votes=list(pending_trial.votes),
@@ -1772,6 +1800,23 @@ class GameplayService(GameplayInboundPort):
         next_mob_leader_user_id = session.current_mob_leader_user_id
         ledger_entries: list[LedgerEntrySnapshot] = []
         next_notification_feed = session.notification_feed
+        if no_juror_votes_before_timeout:
+            mob_manipulation_message = "The mob manipulated the trial and the accused was set free."
+            kingpin_user_ids = [
+                participant.user_id
+                for participant in session.participants
+                if participant.role_name == "Kingpin"
+            ]
+            recipient_ids = {
+                *pending_trial.jury_user_ids,
+                session.moderator_user_id,
+                *kingpin_user_ids,
+            }
+            next_notification_feed = _append_notifications(
+                session.notification_feed,
+                [(user_id, mob_manipulation_message) for user_id in sorted(recipient_ids)],
+                now_epoch_seconds=now_epoch_seconds,
+            )
         confiscation_successful = False
         conviction_correct = None
         if verdict == "guilty" and pending_trial.accused_user_id:
@@ -2227,7 +2272,7 @@ class GameplayService(GameplayInboundPort):
             now_epoch_seconds=now_epoch_seconds,
         )
 
-        resale_price = _round_money_to_nearest_ten(command.resale_price)
+        resale_price = int(command.resale_price)
         if resale_price < 0:
             raise ValueError("Resale price must be >= 0.")
 
@@ -2240,8 +2285,8 @@ class GameplayService(GameplayInboundPort):
                 continue
 
             seller_found = True
-            if participant.faction != "Merchant":
-                raise PermissionError("Only merchants can set resale prices.")
+            if participant.life_state != "alive":
+                raise ConflictProblem("Only alive players can set resale prices.", code="invalid_state")
             updated_inventory: list[InventoryItemStateSnapshot] = []
             for inventory_item in participant.inventory:
                 if inventory_item.item_id == command.inventory_item_id:
@@ -2254,7 +2299,7 @@ class GameplayService(GameplayInboundPort):
         if not seller_found:
             raise ValueError("Seller participant not found in session.")
         if not inventory_item_found:
-            raise ValueError("Inventory item not found for merchant.")
+            raise ValueError("Inventory item not found for seller.")
 
         updated = replace(session, participants=participants, version=session.version + 1)
         self._save_game_session(session, updated)
@@ -2276,7 +2321,7 @@ class GameplayService(GameplayInboundPort):
                 },
             )
         if session.status != "in_progress" or session.phase != "information":
-            raise ConflictProblem("Merchant sales are only allowed during information phase.", code="invalid_state")
+            raise ConflictProblem("Player sales are only allowed during information phase.", code="invalid_state")
         _raise_if_asset_frozen(
             session,
             user_id=command.seller_user_id,
@@ -2306,16 +2351,14 @@ class GameplayService(GameplayInboundPort):
             raise ValueError("Seller participant not found in session.")
         if buyer is None:
             raise ValueError("Buyer participant not found in session.")
-        if seller.faction != "Merchant":
-            raise PermissionError("Only merchants can sell inventory items.")
         if seller.life_state != "alive":
-            raise ConflictProblem("Only alive merchants can sell inventory items.", code="invalid_state")
+            raise ConflictProblem("Only alive players can sell inventory items.", code="invalid_state")
         if buyer.life_state != "alive":
             raise ConflictProblem("Buyer must be alive to receive inventory items.", code="invalid_state")
 
         inventory_item = next((item for item in seller.inventory if item.item_id == command.inventory_item_id), None)
         if inventory_item is None:
-            raise ValueError("Inventory item not found for merchant.")
+            raise ValueError("Inventory item not found for seller.")
 
         duplicate_pending = any(
             offer.inventory_item_id == command.inventory_item_id and offer.seller_user_id == command.seller_user_id
@@ -2476,11 +2519,21 @@ class GameplayService(GameplayInboundPort):
         buyer_name = participant_name_by_id.get(offer.buyer_user_id, offer.buyer_user_id)
         seller_name = participant_name_by_id.get(offer.seller_user_id, offer.seller_user_id)
         decline_notice = f"{buyer_name} declined {seller_name}'s sale offer for {offer.item_display_name}."
+        decline_notifications = [
+            (offer.seller_user_id, decline_notice),
+            (offer.buyer_user_id, decline_notice),
+            (session.moderator_user_id, decline_notice),
+        ]
         if not command.accept:
             updated = replace(
                 session,
                 pending_sale_offers=remaining_offers,
-                latest_public_notice=decline_notice,
+                latest_public_notice=None,
+                notification_feed=_append_notifications(
+                    session.notification_feed,
+                    decline_notifications,
+                    now_epoch_seconds=now_epoch_seconds,
+                ),
                 version=session.version + 1,
             )
             self._save_game_session(session, updated)
@@ -2492,9 +2545,6 @@ class GameplayService(GameplayInboundPort):
             raise ConflictProblem("Sale-offer participants are no longer in session.", code="invalid_state")
         if seller.life_state != "alive" or buyer.life_state != "alive":
             raise ConflictProblem("Sale transaction requires alive seller and buyer.", code="invalid_state")
-        if seller.faction != "Merchant":
-            raise ConflictProblem("Sale offer seller is no longer a merchant.", code="invalid_state")
-
         inventory_item = next((item for item in seller.inventory if item.item_id == offer.inventory_item_id), None)
         if inventory_item is None:
             raise ConflictProblem("Sale item is no longer available in seller inventory.", code="invalid_state")
@@ -2502,7 +2552,12 @@ class GameplayService(GameplayInboundPort):
             updated = replace(
                 session,
                 pending_sale_offers=remaining_offers,
-                latest_public_notice=decline_notice,
+                latest_public_notice=None,
+                notification_feed=_append_notifications(
+                    session.notification_feed,
+                    decline_notifications,
+                    now_epoch_seconds=now_epoch_seconds,
+                ),
                 version=session.version + 1,
             )
             self._save_game_session(session, updated)
@@ -2709,7 +2764,24 @@ class GameplayService(GameplayInboundPort):
 
         remaining_offers = [candidate for candidate in session.pending_gift_offers if candidate.gift_offer_id != command.gift_offer_id]
         if not command.accept:
-            updated = replace(session, pending_gift_offers=remaining_offers, version=session.version + 1)
+            participant_name_by_id = _participant_name_by_id(session.participants)
+            receiver_name = participant_name_by_id.get(offer.receiver_user_id, offer.receiver_user_id)
+            giver_name = participant_name_by_id.get(offer.giver_user_id, offer.giver_user_id)
+            decline_notice = f"{receiver_name} declined {giver_name}'s gift offer for {offer.item_display_name}."
+            updated = replace(
+                session,
+                pending_gift_offers=remaining_offers,
+                notification_feed=_append_notifications(
+                    session.notification_feed,
+                    [
+                        (offer.giver_user_id, decline_notice),
+                        (offer.receiver_user_id, decline_notice),
+                        (session.moderator_user_id, decline_notice),
+                    ],
+                    now_epoch_seconds=now_epoch_seconds,
+                ),
+                version=session.version + 1,
+            )
             self._save_game_session(session, updated)
             return updated
 
@@ -2879,7 +2951,24 @@ class GameplayService(GameplayInboundPort):
             candidate for candidate in session.pending_money_gift_offers if candidate.money_gift_offer_id != command.money_gift_offer_id
         ]
         if not command.accept:
-            updated = replace(session, pending_money_gift_offers=remaining_offers, version=session.version + 1)
+            participant_name_by_id = _participant_name_by_id(session.participants)
+            receiver_name = participant_name_by_id.get(offer.receiver_user_id, offer.receiver_user_id)
+            giver_name = participant_name_by_id.get(offer.giver_user_id, offer.giver_user_id)
+            decline_notice = f"{receiver_name} declined {giver_name}'s money gift offer of ${offer.amount}."
+            updated = replace(
+                session,
+                pending_money_gift_offers=remaining_offers,
+                notification_feed=_append_notifications(
+                    session.notification_feed,
+                    [
+                        (offer.giver_user_id, decline_notice),
+                        (offer.receiver_user_id, decline_notice),
+                        (session.moderator_user_id, decline_notice),
+                    ],
+                    now_epoch_seconds=now_epoch_seconds,
+                ),
+                version=session.version + 1,
+            )
             self._save_game_session(session, updated)
             return updated
 
@@ -2992,6 +3081,12 @@ class GameplayService(GameplayInboundPort):
         accused_participant = next((p for p in session.participants if p.user_id == command.accused_user_id), None)
         if accused_participant is None or accused_participant.life_state != "alive":
             raise ValueError("Accused participant must be alive.")
+        murdered_participant = next((p for p in session.participants if p.user_id == pending_trial.murdered_user_id), None)
+        murdered_username = (
+            murdered_participant.username
+            if murdered_participant is not None
+            else pending_trial.murdered_user_id
+        )
 
         excluded_user_ids: set[str] = set()
         captured_user_id = _active_sergeant_capture_target_user_id(session, now_epoch_seconds=now_epoch_seconds)
@@ -3001,6 +3096,10 @@ class GameplayService(GameplayInboundPort):
             session.participants,
             accused_user_id=command.accused_user_id,
             excluded_user_ids=excluded_user_ids,
+            previous_jury_user_ids=session.latest_jury_log_user_ids,
+            randomization_salt=(
+                f"{session.round_number}:{pending_trial.murdered_user_id}:{command.accused_user_id}"
+            ),
         )
         next_pending_trial = replace(
             pending_trial,
@@ -3018,6 +3117,16 @@ class GameplayService(GameplayInboundPort):
             pending_trial=next_pending_trial,
             phase="trial_voting",
             latest_jury_log_user_ids=list(jury_user_ids),
+            notification_feed=_append_notifications(
+                session.notification_feed,
+                [
+                    (
+                        accused_participant.user_id,
+                        f"You have been accused of murdering {murdered_username}. You are being placed on trial.",
+                    ),
+                ],
+                now_epoch_seconds=now_epoch_seconds,
+            ),
             version=session.version + 1,
         )
         self._save_game_session(session, updated)
@@ -3072,7 +3181,7 @@ class GameplayService(GameplayInboundPort):
         if session.status != "in_progress":
             return session
 
-        merchant_winner_user_id = _find_merchant_winner_user_id(session.participants)
+        merchant_winner_user_id = _find_merchant_winner_user_id(session)
         if merchant_winner_user_id is None:
             return session
 
@@ -3569,7 +3678,7 @@ def _apply_supplier_acquire_if_needed(
                 ),
                 (
                     seller_user_id,
-                    f"Acquire stole ${stolen_amount} from your transaction and redirected it to {supplier.username}.",
+                    f"Acquire power was used. ${stolen_amount} from your transaction was redirected to another player.",
                 ),
                 (
                     moderator_user_id,
@@ -3725,7 +3834,7 @@ def _trial_final_vote_deadline_epoch_seconds(pending_trial: TrialStateSnapshot) 
             pending_trial.vote_deadline_epoch_seconds,
             pending_trial.gangster_tamper_vote_deadline_epoch_seconds,
         ]
-        if deadline is not None
+        if deadline is not None and deadline > 0
     ]
     if not deadlines:
         return None
@@ -4161,7 +4270,7 @@ def _determine_winning_faction(session: GameDetailsSnapshot) -> str | None:
 def _determine_boundary_winner(session: GameDetailsSnapshot) -> tuple[str | None, str | None]:
     participants = session.participants
     # Merchant precedence at boundaries: any merchant meeting goal wins immediately.
-    merchant_winner_user_id = _find_merchant_winner_user_id(participants)
+    merchant_winner_user_id = _find_merchant_winner_user_id(session)
     if merchant_winner_user_id is not None:
         return "Merchant", merchant_winner_user_id
 
@@ -4171,11 +4280,10 @@ def _determine_boundary_winner(session: GameDetailsSnapshot) -> tuple[str | None
     return None, None
 
 
-def _find_merchant_winner_user_id(participants: list[ParticipantStateSnapshot]) -> str | None:
-    total_circulating = sum(max(participant.money_balance, 0) for participant in participants)
-    goal_bonus = int(total_circulating * MERCHANT_GOAL_ADDITIONAL_PERCENT)
-    player_count = max(7, min(len(participants), 25))
-    for participant in participants:
+def _find_merchant_winner_user_id(session: GameDetailsSnapshot) -> str | None:
+    player_count = max(7, min(len(session.participants), 25))
+    goal_bonus = int(session.ledger.circulating_currency_baseline * MERCHANT_GOAL_ADDITIONAL_PERCENT)
+    for participant in session.participants:
         if participant.faction != "Merchant":
             continue
         if participant.life_state != "alive":
@@ -4235,7 +4343,13 @@ def _apply_armed_don_silence_for_upcoming_trial(
         f"{target.username} seems to be afraid to testify at court. "
         f"{target.username} will remain silent during this upcoming trial."
     )
-    broadcast_pairs = [(participant.user_id, silence_notice) for participant in participants_without_arm]
+    target_silence_notice = "You seem to be afraid to testify at court. You must remain silent during this trial."
+    broadcast_pairs = [
+        (participant.user_id, silence_notice)
+        for participant in participants_without_arm
+        if participant.user_id != target.user_id
+    ]
+    broadcast_pairs.append((target.user_id, target_silence_notice))
     if moderator_user_id not in {participant.user_id for participant in participants_without_arm}:
         broadcast_pairs.append((moderator_user_id, silence_notice))
     next_notifications = _append_notifications(
@@ -4734,6 +4848,8 @@ def _select_trial_jury_user_ids(
     *,
     accused_user_id: str,
     excluded_user_ids: set[str] | None = None,
+    previous_jury_user_ids: list[str] | None = None,
+    randomization_salt: str = "",
 ) -> list[str]:
     excluded = excluded_user_ids or set()
     eligible = [
@@ -4744,7 +4860,7 @@ def _select_trial_jury_user_ids(
     if not eligible:
         return []
     if len(eligible) <= DEFAULT_WEIGHTS.jury_min_size:
-        ordered = sorted(eligible, key=lambda participant: (participant.rank, participant.username.lower(), participant.user_id))
+        ordered = sorted(eligible, key=lambda participant: _jury_randomized_sort_key(participant.user_id, randomization_salt))
         return [participant.user_id for participant in ordered]
 
     target_count = max(1, int(len(eligible) * DEFAULT_WEIGHTS.jury_fraction_of_living_players))
@@ -4752,5 +4868,16 @@ def _select_trial_jury_user_ids(
     target_count = min(target_count, len(eligible))
     if DEFAULT_WEIGHTS.jury_must_be_odd and target_count > 1 and target_count % 2 == 0:
         target_count -= 1
-    ordered = sorted(eligible, key=lambda participant: (participant.rank, participant.username.lower(), participant.user_id))
+    previous_jury_set = set(previous_jury_user_ids or [])
+    ordered = sorted(
+        eligible,
+        key=lambda participant: (
+            1 if participant.user_id in previous_jury_set else 0,
+            _jury_randomized_sort_key(participant.user_id, randomization_salt),
+        ),
+    )
     return [participant.user_id for participant in ordered[:target_count]]
+
+
+def _jury_randomized_sort_key(user_id: str, randomization_salt: str) -> str:
+    return hashlib.sha256(f"{randomization_salt}:{user_id}".encode("utf-8")).hexdigest()

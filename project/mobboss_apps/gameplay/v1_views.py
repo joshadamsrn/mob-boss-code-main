@@ -65,7 +65,6 @@ def _to_participant_dict(
     status_label: str,
     snapshot,
     participant_name_by_id: dict[str, str],
-    total_circulating: int,
     player_count: int,
 ) -> dict:
     data = {
@@ -75,7 +74,7 @@ def _to_participant_dict(
         "status_label": status_label,
     }
     if include_role_details:
-        goal_bonus = int(total_circulating * MERCHANT_GOAL_ADDITIONAL_PERCENT)
+        goal_bonus = int(snapshot.ledger.circulating_currency_baseline * MERCHANT_GOAL_ADDITIONAL_PERCENT)
         data["faction"] = participant.faction
         data["role_name"] = participant.role_name
         data["rank"] = participant.rank
@@ -117,7 +116,6 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
     min_created_at_epoch_seconds = now_epoch_seconds - NOTIFICATION_TTL_SECONDS
     participants: list[dict] = []
     participant_name_by_id = {participant.user_id: participant.username for participant in snapshot.participants}
-    total_circulating = sum(max(participant.money_balance, 0) for participant in snapshot.participants)
     player_count = max(7, min(len(snapshot.participants), 25))
     reveal_all_roles = snapshot.status == "ended"
     ghost_view_enabled = _viewer_has_ghost_view(snapshot, viewer_user_id)
@@ -131,7 +129,6 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
                 status_label=_participant_status_label(snapshot, participant.user_id),
                 snapshot=snapshot,
                 participant_name_by_id=participant_name_by_id,
-                total_circulating=total_circulating,
                 player_count=player_count,
             )
         )

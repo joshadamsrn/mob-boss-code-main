@@ -22,7 +22,14 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     PlayerTransactionSnapshot,
     TrialStateSnapshot,
 )
-from project.mobboss_apps.gameplay.views import activate_deputy_protective_custody, detail, exit_game  # noqa: E402
+from project.mobboss_apps.gameplay.views import (  # noqa: E402
+    activate_deputy_protective_custody,
+    activate_gangster_tamper,
+    activate_kingpin_reduce_clock,
+    activate_underboss_jury_override,
+    detail,
+    exit_game,
+)
 from project.mobboss_apps.rooms.ports.internal import RoomDetailsSnapshot  # noqa: E402
 
 
@@ -89,6 +96,48 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.container = _StubContainer()
         self.player = type("U", (), {"is_authenticated": True, "id": "u_police", "username": "police"})()
         self.moderator = type("U", (), {"is_authenticated": True, "id": "u_mod", "username": "moderator"})()
+
+    def test_detail_template_defers_phone_notifications_while_blocking_overlay_is_visible(self) -> None:
+        template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
+        template_source = template_path.read_text()
+
+        self.assertIn("if (hasBlockingActionOverlay()) {\n        return;\n      }", template_source)
+        self.assertNotIn("if (hasBlockingActionOverlay()) {\n        markSnapshotNoticesSeen(snapshot);\n        return;\n      }", template_source)
+
+    def test_detail_template_rechecks_notifications_after_jury_overlay_dismiss(self) -> None:
+        template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
+        template_source = template_path.read_text()
+
+        self.assertIn(
+            "playerJuryOverlay.classList.add(\"d-none\");\n        showPlayerScreen(currentPlayerScreen);\n        if (currentSnapshot) {\n          maybeShowOverlayNotification(currentSnapshot);\n        }",
+            template_source,
+        )
+
+    def test_detail_template_marks_overlay_notification_seen_on_dismiss_not_on_show(self) -> None:
+        template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
+        template_source = template_path.read_text()
+
+        self.assertIn("activeNotificationMessage = message;", template_source)
+        self.assertIn(
+            "if (activeNotificationKey && activeNotificationMessage) {\n          markNotificationSeen(activeNotificationKey, activeNotificationMessage);\n        }\n        clearNotificationOverlay();",
+            template_source,
+        )
+        self.assertNotIn("markNotificationSeen(key, message);", template_source)
+
+    def test_player_inventory_template_uses_single_submit_actions(self) -> None:
+        template_path = (
+            REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "_player_inventory_card.html"
+        )
+        template_source = template_path.read_text()
+
+        self.assertIn('type="submit">Save Price</button>', template_source)
+        self.assertIn('type="submit">Send Offer</button>', template_source)
+        self.assertIn('type="submit">Send Gift</button>', template_source)
+        self.assertIn('name="buyer_user_id" required', template_source)
+        self.assertIn('name="receiver_user_id" required', template_source)
+        self.assertNotIn("player-resale-toggle", template_source)
+        self.assertNotIn("player-sale-toggle", template_source)
+        self.assertNotIn("player-gift-toggle", template_source)
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
@@ -177,6 +226,8 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         viewer_notifications = captured_context["viewer_notifications"]
         self.assertEqual([event.event_id for event in viewer_notifications], ["event-recent"])
+        viewer_notification_history = captured_context["viewer_notification_history"]
+        self.assertEqual([event.event_id for event in viewer_notification_history], ["event-recent", "event-old"])
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     def test_exit_game_deletes_ended_room_for_moderator_and_clears_session(self, mock_get_container) -> None:
@@ -323,6 +374,262 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertIsNotNone(gameplay_inbound.command)
         self.assertEqual(gameplay_inbound.command.actor_user_id, "u_deputy")
         self.assertEqual(gameplay_inbound.command.target_user_id, "u_target")
+
+    @patch("project.mobboss_apps.gameplay.views.messages.error")
+    @patch("project.mobboss_apps.gameplay.views.messages.success")
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    def test_underboss_activation_uses_view_as_actor_in_dev_mode(self, mock_get_container, _mock_success, _mock_error) -> None:
+        snapshot = GameDetailsSnapshot(
+            game_id="g-underboss-action",
+            room_id="r-underboss-action",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=7,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_under",
+                    username="under",
+                    faction="Mob",
+                    role_name="Under Boss",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_juror",
+                    username="juror",
+                    faction="Police",
+                    role_name="Deputy",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+            ],
+            catalog=[],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_dead",
+                murderer_user_id=None,
+                accused_user_id="u_accused",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_juror"],
+                vote_deadline_epoch_seconds=200,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+        )
+
+        class _UnderbossActionStubGameplayInboundPort:
+            def __init__(self, active_snapshot: GameDetailsSnapshot) -> None:
+                self._snapshot = active_snapshot
+                self.command = None
+
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return self._snapshot
+
+            def activate_underboss_jury_override(self, command):
+                self.command = command
+                return self._snapshot
+
+        class _UnderbossActionStubContainer:
+            def __init__(self, gameplay_inbound_port) -> None:
+                self.gameplay_inbound_port = gameplay_inbound_port
+                self.room_dev_mode = True
+
+        gameplay_inbound = _UnderbossActionStubGameplayInboundPort(snapshot)
+        mock_get_container.return_value = _UnderbossActionStubContainer(gameplay_inbound)
+        request = self.factory.post(
+            "/games/g-underboss-action/activate-underboss-jury-override",
+            data={
+                "as_user_id": "u_under",
+                "removed_juror_user_id": "u_juror",
+                "expected_version": "7",
+            },
+        )
+        request.user = self.moderator
+
+        response = activate_underboss_jury_override(request, game_id="g-underboss-action")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(gameplay_inbound.command)
+        self.assertEqual(gameplay_inbound.command.actor_user_id, "u_under")
+        self.assertEqual(gameplay_inbound.command.removed_juror_user_id, "u_juror")
+
+    @patch("project.mobboss_apps.gameplay.views.messages.error")
+    @patch("project.mobboss_apps.gameplay.views.messages.success")
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    def test_kingpin_activation_uses_view_as_actor_in_dev_mode(self, mock_get_container, _mock_success, _mock_error) -> None:
+        snapshot = GameDetailsSnapshot(
+            game_id="g-kingpin-action",
+            room_id="r-kingpin-action",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=4,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_kingpin",
+                    username="kingpin",
+                    faction="Mob",
+                    role_name="Kingpin",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_juror",
+                    username="juror",
+                    faction="Police",
+                    role_name="Deputy",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+            ],
+            catalog=[],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_dead",
+                murderer_user_id=None,
+                accused_user_id="u_accused",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_juror"],
+                vote_deadline_epoch_seconds=200,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+        )
+
+        class _KingpinActionStubGameplayInboundPort:
+            def __init__(self, active_snapshot: GameDetailsSnapshot) -> None:
+                self._snapshot = active_snapshot
+                self.command = None
+
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return self._snapshot
+
+            def activate_kingpin_reduce_clock(self, command):
+                self.command = command
+                return self._snapshot
+
+        class _KingpinActionStubContainer:
+            def __init__(self, gameplay_inbound_port) -> None:
+                self.gameplay_inbound_port = gameplay_inbound_port
+                self.room_dev_mode = True
+
+        gameplay_inbound = _KingpinActionStubGameplayInboundPort(snapshot)
+        mock_get_container.return_value = _KingpinActionStubContainer(gameplay_inbound)
+        request = self.factory.post(
+            "/games/g-kingpin-action/activate-kingpin-reduce-clock",
+            data={
+                "as_user_id": "u_kingpin",
+                "expected_version": "4",
+            },
+        )
+        request.user = self.moderator
+
+        response = activate_kingpin_reduce_clock(request, game_id="g-kingpin-action")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(gameplay_inbound.command)
+        self.assertEqual(gameplay_inbound.command.actor_user_id, "u_kingpin")
+
+    @patch("project.mobboss_apps.gameplay.views.messages.error")
+    @patch("project.mobboss_apps.gameplay.views.messages.success")
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    def test_gangster_activation_uses_view_as_actor_in_dev_mode(self, mock_get_container, _mock_success, _mock_error) -> None:
+        snapshot = GameDetailsSnapshot(
+            game_id="g-gangster-action",
+            room_id="r-gangster-action",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=5,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_gangster",
+                    username="gangster",
+                    faction="Mob",
+                    role_name="Gangster",
+                    rank=3,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_juror",
+                    username="juror",
+                    faction="Police",
+                    role_name="Deputy",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+            ],
+            catalog=[],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_dead",
+                murderer_user_id=None,
+                accused_user_id="u_accused",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_juror"],
+                vote_deadline_epoch_seconds=200,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+        )
+
+        class _GangsterActionStubGameplayInboundPort:
+            def __init__(self, active_snapshot: GameDetailsSnapshot) -> None:
+                self._snapshot = active_snapshot
+                self.command = None
+
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return self._snapshot
+
+            def activate_gangster_tamper(self, command):
+                self.command = command
+                return self._snapshot
+
+        class _GangsterActionStubContainer:
+            def __init__(self, gameplay_inbound_port) -> None:
+                self.gameplay_inbound_port = gameplay_inbound_port
+                self.room_dev_mode = True
+
+        gameplay_inbound = _GangsterActionStubGameplayInboundPort(snapshot)
+        mock_get_container.return_value = _GangsterActionStubContainer(gameplay_inbound)
+        request = self.factory.post(
+            "/games/g-gangster-action/activate-gangster-tamper",
+            data={
+                "as_user_id": "u_gangster",
+                "target_user_id": "u_juror",
+                "expected_version": "5",
+            },
+        )
+        request.user = self.moderator
+
+        response = activate_gangster_tamper(request, game_id="g-gangster-action")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(gameplay_inbound.command)
+        self.assertEqual(gameplay_inbound.command.actor_user_id, "u_gangster")
+        self.assertEqual(gameplay_inbound.command.target_user_id, "u_juror")
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
@@ -911,6 +1218,95 @@ class GameplayHtmlContextTests(SimpleTestCase):
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
+    def test_merchant_context_uses_player_phone_layout_with_separate_inventory_screen(self, mock_render, mock_get_container) -> None:
+        merchant_snapshot = GameDetailsSnapshot(
+            game_id="g-merchant-layout",
+            room_id="r-merchant-layout",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="information",
+            round_number=1,
+            version=1,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_merchant",
+                    username="merchant",
+                    faction="Merchant",
+                    role_name="Merchant",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=500,
+                    inventory=[
+                        InventoryItemStateSnapshot(
+                            item_id="inv-merchant-1",
+                            classification="knife",
+                            display_name="Knife",
+                            image_path="/static/items/defaults/default_knife.svg",
+                            acquisition_value=100,
+                            resale_price=75,
+                        )
+                    ],
+                    power_state=ParticipantPowerStateSnapshot(
+                        merchant_wholesale_order_used=False,
+                    ),
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+            catalog=[
+                CatalogItemStateSnapshot(
+                    classification="knife",
+                    display_name="Knife",
+                    base_price=100,
+                    image_path="/static/items/defaults/default_knife.svg",
+                    is_active=True,
+                )
+            ],
+            pending_trial=None,
+        )
+
+        class _MerchantLayoutStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return merchant_snapshot
+
+        class _MerchantLayoutStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _MerchantLayoutStubGameplayInboundPort()
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _MerchantLayoutStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-merchant-layout")
+        request.user = type("U", (), {"is_authenticated": True, "id": "u_merchant", "username": "merchant"})()
+
+        response = detail(request, game_id="g-merchant-layout")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(captured_context["is_current_user_merchant"])
+        self.assertFalse(captured_context["show_player_wallet"])
+        self.assertTrue(captured_context["show_player_inventory"])
+        self.assertTrue(captured_context["use_player_phone_layout"])
+        self.assertEqual(captured_context["merchant_money_balance"], 500)
+        self.assertEqual(len(captured_context["player_inventory_items"]), 1)
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
     def test_detail_context_includes_explicit_passive_only_superpower_panel_for_merchant(self, mock_render, mock_get_container) -> None:
         merchant_snapshot = GameDetailsSnapshot(
             game_id="g-merchant",
@@ -1031,12 +1427,99 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(captured_context["superpower_panel"]["ability_name"], "Wholesale Order")
         self.assertEqual(captured_context["superpower_panel"]["status_text"], "Ready during information phase.")
         self.assertTrue(captured_context["superpower_panel"]["can_activate"])
+        self.assertTrue(captured_context["is_current_user_merchant"])
+        self.assertFalse(captured_context["show_player_wallet"])
+        self.assertTrue(captured_context["show_player_inventory"])
+        self.assertTrue(captured_context["use_player_phone_layout"])
+        self.assertEqual(captured_context["merchant_money_balance"], 500)
         self.assertEqual(len(captured_context["superpower_panel"]["target_rows"]), 1)
         self.assertEqual(captured_context["superpower_panel"]["target_rows"][0]["classification"], "gun_tier_1")
         self.assertEqual(captured_context["superpower_panel"]["target_rows"][0]["discounted_price"], 110)
         self.assertEqual(
             captured_context["superpower_panel"]["implementation_state"],
             "Activated power is fully usable from this card.",
+        )
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_trial_voting_context_marks_silenced_juror_and_blocks_vote_prompt(self, mock_render, mock_get_container) -> None:
+        silenced_snapshot = GameDetailsSnapshot(
+            game_id="g-silenced",
+            room_id="r-silenced",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=4,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_target",
+                    username="target",
+                    faction="Police",
+                    role_name="Deputy",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=250,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_accused",
+                    username="accused",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+            ],
+            catalog=[],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_dead",
+                murderer_user_id="u_secret",
+                accused_user_id="u_accused",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_target"],
+                silenced_user_ids=["u_target"],
+                vote_deadline_epoch_seconds=1200,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+        )
+
+        class _SilencedStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return silenced_snapshot
+
+        class _SilencedStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _SilencedStubGameplayInboundPort()
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _SilencedStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-silenced")
+        request.user = type("U", (), {"is_authenticated": True, "id": "u_target", "username": "target"})()
+
+        response = detail(request, game_id="g-silenced")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(captured_context["jury_prompt"]["show"])
+        self.assertTrue(captured_context["jury_prompt"]["is_silenced"])
+        self.assertFalse(captured_context["jury_prompt"]["can_vote"])
+        self.assertEqual(
+            captured_context["jury_prompt"]["silence_notice"],
+            "You seem to be afraid to testify at court. You must remain silent during this trial.",
         )
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
@@ -1632,7 +2115,7 @@ class GameplayHtmlContextTests(SimpleTestCase):
             "Starting loadout is resolved automatically at game launch.",
         )
         self.assertIn(
-            "One Tier 1 gun is removed from central supply and placed in your inventory automatically when the session starts.",
+            "One Tier 1 gun is removed from Central Supply and placed in your inventory when the session starts.",
             captured_context["superpower_panel"]["details"],
         )
         self.assertEqual(
@@ -1709,7 +2192,10 @@ class GameplayHtmlContextTests(SimpleTestCase):
             "Ready during information phase.",
         )
         self.assertTrue(captured_context["superpower_panel"]["can_activate"])
-        self.assertIn("Protected targets cannot be killed for 5 minutes; attempted murders still trigger trial flow.", captured_context["superpower_panel"]["details"])
+        self.assertIn(
+            "That player cannot be killed for 5 minutes. An attempted murder still triggers trial flow.",
+            captured_context["superpower_panel"]["details"],
+        )
         self.assertEqual(
             captured_context["superpower_panel"]["implementation_state"],
             "Activated power is fully usable from this card.",
@@ -1783,7 +2269,10 @@ class GameplayHtmlContextTests(SimpleTestCase):
             captured_context["superpower_panel"]["status_text"],
             "Status: Active",
         )
-        self.assertIn("Gangster gains a separate replacement vote with its own timer; if already on the jury, Gangster may vote twice.", captured_context["superpower_panel"]["details"])
+        self.assertIn(
+            "You receive a separate replacement vote with its own timer. If you are already on the jury, you may vote twice.",
+            captured_context["superpower_panel"]["details"],
+        )
         self.assertEqual(
             captured_context["superpower_panel"]["implementation_state"],
             "Activated power is fully usable from this card.",

@@ -12,14 +12,6 @@
                         no one yet
                     {% endif %}
                 </div>
-                <div class="small text-secondary">
-                    Deadline:
-                    {% if page.pending_trial.accused_selection_deadline_epoch_seconds %}
-                        {{ page.pending_trial.accused_selection_deadline_epoch_seconds }}
-                    {% else %}
-                        not set
-                    {% endif %}
-                </div>
             {% else %}
                 <div class="small text-secondary">No pending trial right now.</div>
             {% endif %}

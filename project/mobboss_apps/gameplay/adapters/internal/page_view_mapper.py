@@ -61,8 +61,7 @@ def build_gameplay_page_view(snapshot: GameDetailsSnapshot, viewer_user_id: str)
 
 def _build_moderator_gameplay_page_view(snapshot: GameDetailsSnapshot, viewer_user_id: str) -> GameplayPageViewDTO:
     participant_name_by_id = {participant.user_id: participant.username for participant in snapshot.participants}
-    total_circulating = sum(max(participant.money_balance, 0) for participant in snapshot.participants)
-    goal_bonus = int(total_circulating * MERCHANT_GOAL_ADDITIONAL_PERCENT)
+    goal_bonus = int(snapshot.ledger.circulating_currency_baseline * MERCHANT_GOAL_ADDITIONAL_PERCENT)
     player_count = max(7, min(len(snapshot.participants), 25))
     participant_rows = [
         GameplayParticipantRowDTO(

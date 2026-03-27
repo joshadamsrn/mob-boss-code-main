@@ -1,5 +1,6 @@
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -14,6 +15,7 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     CatalogItemStateSnapshot,
     GameDetailsSnapshot,
     InventoryItemStateSnapshot,
+    LedgerStateSnapshot,
     ParticipantStateSnapshot,
     TrialStateSnapshot,
 )
@@ -224,6 +226,57 @@ class GameplayPageViewMapperTests(unittest.TestCase):
         self.assertEqual(dead_row.murdered_by_username, "police")
         self.assertEqual(jailed_row.accused_by_username, "police")
         self.assertEqual(jailed_row.convicted_by_label, "police")
+
+    def test_moderator_view_keeps_merchant_goal_fixed_from_baseline(self) -> None:
+        baseline = 1000
+        snapshot_a = GameDetailsSnapshot(
+            game_id="g-1",
+            room_id="r-1",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="information",
+            round_number=1,
+            version=1,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_merchant",
+                    username="merchant",
+                    faction="Merchant",
+                    role_name="Merchant",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=700,
+                ),
+            ],
+            catalog=[],
+            pending_trial=None,
+            ledger=LedgerStateSnapshot(circulating_currency_baseline=baseline),
+        )
+        snapshot_b = replace(
+            snapshot_a,
+            participants=[
+                replace(snapshot_a.participants[0], money_balance=620),
+                replace(snapshot_a.participants[1], money_balance=180),
+            ],
+        )
+
+        page_a = build_gameplay_page_view(snapshot_a, "u_mod")
+        page_b = build_gameplay_page_view(snapshot_b, "u_mod")
+        goal_a = next(row for row in page_a.participant_rows if row.user_id == "u_merchant").merchant_money_goal
+        goal_b = next(row for row in page_b.participant_rows if row.user_id == "u_merchant").merchant_money_goal
+        self.assertIsNotNone(goal_a)
+        self.assertEqual(goal_a, goal_b)
 
 
 if __name__ == "__main__":

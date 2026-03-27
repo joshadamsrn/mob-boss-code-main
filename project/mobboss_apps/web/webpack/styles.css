@@ -518,6 +518,45 @@ label {
   color: #cedaeb;
 }
 
+.detective-investigation-table-wrap {
+  border: 1px solid #c2d2ea;
+  border-radius: 0.45rem;
+  background: #ffffff;
+}
+
+#detectiveInvestigationReveal {
+  background: #f2f6ff;
+  border-color: #c2d2ea;
+  color: #0f1f33;
+}
+
+#detectiveInvestigationReveal .small,
+#detectiveInvestigationReveal .fw-semibold,
+#detectiveInvestigationReveal div {
+  color: #0f1f33;
+}
+
+.detective-investigation-table {
+  --bs-table-bg: #ffffff;
+  --bs-table-striped-bg: #f6f9ff;
+  --bs-table-hover-bg: #edf3ff;
+  --bs-table-border-color: #d0dcef;
+  --bs-table-color: #0f1f33;
+  color: #0f1f33;
+}
+
+.detective-investigation-table th {
+  color: #0a1729;
+  background: #e8f0ff;
+  font-weight: 700;
+  border-bottom-color: #bdcde6;
+  white-space: nowrap;
+}
+
+.detective-investigation-table td {
+  color: #0f1f33;
+}
+
 .app-toast {
   box-shadow: var(--app-shadow-hard);
 }

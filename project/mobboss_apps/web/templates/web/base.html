@@ -1,4 +1,5 @@
 {% load render_bundle from webpack_loader %}
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,6 +10,9 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f15">
     <title>{% block title %}Mob Boss{% endblock %}</title>
     <meta name="description" content="Mob Boss multiplayer strategy game experience.">
+    <link rel="icon" type="image/png" href="{% static 'characters/mob_boss.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'characters/mob_boss.png' %}">
+    <link rel="apple-touch-icon-precomposed" href="{% static 'characters/mob_boss.png' %}">
     {% render_bundle 'web' 'css' %}
     {% block head_extra %}{% endblock %}
 </head>

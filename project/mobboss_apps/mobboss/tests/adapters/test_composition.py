@@ -84,7 +84,7 @@ class CompositionContainerTests(unittest.TestCase):
         self.assertIsNotNone(media_settings.media_root)
         self.assertEqual(media_settings.media_url, "/media/")
         self.assertGreaterEqual(room_settings.minimum_launch_players, 1)
-        self.assertGreaterEqual(room_settings.state_poll_interval_seconds, 5)
+        self.assertGreaterEqual(room_settings.state_poll_interval_seconds, 3)
         self.assertGreaterEqual(room_settings.auto_shuffle_interval_seconds, 10)
         self.assertEqual(room_settings.minimum_launch_players, container.room_min_launch_players)
         self.assertEqual(room_settings.dev_mode, container.room_dev_mode)
@@ -117,7 +117,7 @@ class CompositionContainerTests(unittest.TestCase):
         self.assertEqual(media_settings.media_url, "/media/")
         self.assertEqual(room_settings.minimum_launch_players, 1)
         self.assertTrue(room_settings.dev_mode)
-        self.assertEqual(room_settings.state_poll_interval_seconds, 5)
+        self.assertEqual(room_settings.state_poll_interval_seconds, 3)
         self.assertEqual(room_settings.auto_shuffle_interval_seconds, 10)
 
 

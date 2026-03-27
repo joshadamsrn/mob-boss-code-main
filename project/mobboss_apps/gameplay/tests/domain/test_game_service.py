@@ -219,7 +219,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.version, 2)
         self.assertIsNotNone(updated.pending_trial)
         self.assertEqual(updated.pending_trial.accused_selection_cursor, ["u_police"])
-        self.assertEqual(updated.pending_trial.accused_selection_deadline_epoch_seconds, 1015)
+        self.assertIsNone(updated.pending_trial.accused_selection_deadline_epoch_seconds)
         self.assertIsNone(updated.pending_trial.resolution)
         self.assertEqual(
             updated.latest_public_notice,
@@ -1528,7 +1528,11 @@ class GameplayServiceTests(unittest.TestCase):
             any(event.user_id == "u_supplier" and "Acquire stole $70" in event.message for event in after_sale_accept.notification_feed)
         )
         self.assertTrue(
-            any(event.user_id == "u_merchant" and "Acquire stole $70" in event.message for event in after_sale_accept.notification_feed)
+            any(
+                event.user_id == "u_merchant"
+                and event.message == "Acquire power was used. $70 from your transaction was redirected to another player."
+                for event in after_sale_accept.notification_feed
+            )
         )
         self.assertTrue(
             any(event.user_id == "u_mod" and "Acquire stole $70" in event.message for event in after_sale_accept.notification_feed)
@@ -1773,7 +1777,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.latest_public_notice, "A felon has escaped from jail and is back in the game.")
         self.assertTrue(any(event.user_id == "u_felon" and "escaped from jail" in event.message for event in updated.notification_feed))
 
-    def test_accused_selection_timeout_exhaustion_resolves_boundary_and_ends_when_police_win(self) -> None:
+    def test_accused_selection_has_no_timeout_deadline(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
         after_report = self.service.report_death(
             ReportDeathCommand(
@@ -1787,24 +1791,38 @@ class GameplayServiceTests(unittest.TestCase):
 
         self.assertEqual(after_report.phase, "accused_selection")
         self.assertEqual(after_report.pending_trial.accused_selection_cursor, ["u_chief"])
-        self.assertEqual(after_report.pending_trial.accused_selection_deadline_epoch_seconds, 1015)
+        self.assertIsNone(after_report.pending_trial.accused_selection_deadline_epoch_seconds)
 
-        self.now_epoch_seconds = 1015
-        resolved = self.service.advance_accused_selection_timeout(
-            AdvanceAccusedSelectionTimeoutCommand(
+    def test_submit_accused_selection_notifies_accused_player_of_trial(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
+        after_report = self.service.report_death(
+            ReportDeathCommand(
+                game_id=started.game_id,
+                murdered_user_id="u_mob",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                expected_version=started.version,
+            )
+        )
+
+        after_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
                 game_id=after_report.game_id,
-                requested_by_user_id="u_mod",
+                selected_by_user_id="u_chief",
+                accused_user_id="u_deputy",
                 expected_version=after_report.version,
             )
         )
-        self.assertEqual(resolved.phase, "ended")
-        self.assertEqual(resolved.status, "ended")
-        self.assertEqual(resolved.winning_faction, "Police")
-        self.assertEqual(resolved.pending_trial.accused_selection_cursor, [])
-        self.assertIsNone(resolved.pending_trial.accused_selection_deadline_epoch_seconds)
-        self.assertEqual(resolved.pending_trial.resolution, "no_conviction")
 
-    def test_accused_selection_timeout_advance_requires_elapsed_deadline(self) -> None:
+        accused_notifications = [
+            event.message for event in after_selection.notification_feed if event.user_id == "u_deputy"
+        ]
+        self.assertIn(
+            "You have been accused of murdering mob. You are being placed on trial.",
+            accused_notifications,
+        )
+
+    def test_accused_selection_timeout_advance_requires_active_deadline(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
         after_report = self.service.report_death(
             ReportDeathCommand(
@@ -1841,12 +1859,27 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(after_report.total_mob_participants_at_start, 1)
         self.assertEqual(after_report.police_mob_kills_count, 1)
 
-        self.now_epoch_seconds = 1015
-        resolved = self.service.advance_accused_selection_timeout(
-            AdvanceAccusedSelectionTimeoutCommand(
+        after_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
                 game_id=after_report.game_id,
-                requested_by_user_id="u_mod",
+                selected_by_user_id="u_chief",
+                accused_user_id="u_deputy",
                 expected_version=after_report.version,
+            )
+        )
+        after_start_voting = self.service.allow_trial_voting(
+            AllowTrialVotingCommand(
+                game_id=after_selection.game_id,
+                requested_by_user_id="u_mod",
+                expected_version=after_selection.version,
+            )
+        )
+        resolved = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_start_voting.game_id,
+                voter_user_id="u_chief",
+                vote="guilty",
+                expected_version=after_start_voting.version,
             )
         )
 
@@ -1907,40 +1940,33 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(after_first_report.total_mob_participants_at_start, 2)
         self.assertEqual(after_first_report.police_mob_kills_count, 0)
 
-        self.now_epoch_seconds = 1015
-        after_first_boundary = self.service.advance_accused_selection_timeout(
-            AdvanceAccusedSelectionTimeoutCommand(
+        after_first_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
                 game_id=after_first_report.game_id,
-                requested_by_user_id="u_mod",
+                selected_by_user_id="u_chief",
+                accused_user_id="u_chief",
                 expected_version=after_first_report.version,
+            )
+        )
+        after_first_voting_started = self.service.allow_trial_voting(
+            AllowTrialVotingCommand(
+                game_id=after_first_selection.game_id,
+                requested_by_user_id="u_mod",
+                expected_version=after_first_selection.version,
+            )
+        )
+        after_first_boundary = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_first_voting_started.game_id,
+                voter_user_id="u_mob_b",
+                vote="innocent",
+                expected_version=after_first_voting_started.version,
             )
         )
         self.assertEqual(after_first_boundary.status, "in_progress")
         self.assertEqual(after_first_boundary.phase, "information")
 
-        after_second_report = self.service.report_death(
-            ReportDeathCommand(
-                game_id=after_first_boundary.game_id,
-                murdered_user_id="u_mob_b",
-                murderer_user_id="u_chief",
-                reported_by_user_id="u_mod",
-                attack_classification="knife",
-                expected_version=after_first_boundary.version,
-            )
-        )
-        self.assertEqual(after_second_report.police_mob_kills_count, 1)
-
-        self.now_epoch_seconds = 1030
-        resolved = self.service.advance_accused_selection_timeout(
-            AdvanceAccusedSelectionTimeoutCommand(
-                game_id=after_second_report.game_id,
-                requested_by_user_id="u_mod",
-                expected_version=after_second_report.version,
-            )
-        )
-        self.assertEqual(resolved.phase, "ended")
-        self.assertEqual(resolved.status, "ended")
-        self.assertEqual(resolved.winning_faction, "Police")
+        self.assertEqual(after_first_boundary.police_mob_kills_count, 0)
 
     def test_advance_accused_selection_timeout_rejects_stale_expected_version(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
@@ -2014,7 +2040,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(accused.life_state, "jailed")
         self.assertEqual(after_first_vote.latest_public_notice, "Game ended. Police wins.")
 
-    def test_allow_trial_voting_sets_vote_deadline_for_jury_countdown(self) -> None:
+    def test_allow_trial_voting_marks_jury_voting_active_without_default_timer(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
         after_report = self.service.report_death(
             ReportDeathCommand(
@@ -2029,12 +2055,11 @@ class GameplayServiceTests(unittest.TestCase):
             SubmitAccusedSelectionCommand(
                 game_id=after_report.game_id,
                 selected_by_user_id="u_deputy",
-                accused_user_id="u_mob",
+                accused_user_id="u_deputy",
                 expected_version=after_report.version,
             )
         )
 
-        self.now_epoch_seconds = 1200
         after_start_voting = self.service.allow_trial_voting(
             AllowTrialVotingCommand(
                 game_id=after_selection.game_id,
@@ -2044,7 +2069,7 @@ class GameplayServiceTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(after_start_voting.pending_trial)
-        self.assertEqual(after_start_voting.pending_trial.vote_deadline_epoch_seconds, 1210)
+        self.assertEqual(after_start_voting.pending_trial.vote_deadline_epoch_seconds, -1)
 
     def test_gangster_tamper_can_replace_a_juror_vote_with_second_gangster_vote(self) -> None:
         started = self.service.start_session_from_room(
@@ -2165,7 +2190,13 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.protective_custody_expires_at_epoch_seconds, 1300)
         self.assertTrue(any(event.user_id == "u_mod" for event in updated.notification_feed))
         self.assertTrue(any(event.user_id == "u_deputy" for event in updated.notification_feed))
-        self.assertTrue(any(event.user_id == "u_mob" for event in updated.notification_feed))
+        self.assertTrue(
+            any(
+                event.user_id == "u_mob"
+                and event.message == "You are under police protective custody for 5 minutes. Murder attempts on you will fail."
+                for event in updated.notification_feed
+            )
+        )
 
     def test_attempted_murder_on_protected_target_starts_trial_without_killing_or_transfer(self) -> None:
         started = self.service.start_session_from_room(
@@ -2374,9 +2405,12 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.pending_gift_offers, [])
         self.assertEqual(updated.pending_money_gift_offers, [])
         messages_by_user = {event.user_id: event.message for event in updated.notification_feed}
-        self.assertIn("temporarily frozen by the police department", messages_by_user["u_target"])
-        self.assertIn("temporarily frozen by the police department", messages_by_user["u_captain"])
-        self.assertIn("temporarily frozen by the police department", messages_by_user["u_mod"])
+        self.assertEqual(
+            messages_by_user["u_target"],
+            "Your accounts have been temporarily frozen by the police department for 10 minutes. No transactions can go through at this time.",
+        )
+        self.assertEqual(messages_by_user["u_captain"], "You froze target's accounts for 10 minutes.")
+        self.assertEqual(messages_by_user["u_mod"], "Captain froze target's accounts for 10 minutes.")
         self.assertIn("temporarily frozen by the police department", messages_by_user["u_hobo"])
         self.assertIn("temporarily frozen by the police department", messages_by_user["u_merchant"])
 
@@ -2491,9 +2525,13 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.sergeant_capture_user_id, "u_target")
         self.assertEqual(updated.sergeant_capture_by_user_id, "u_sergeant")
         self.assertEqual(updated.sergeant_capture_expires_at_epoch_seconds, 1300)
-        self.assertTrue(any(event.user_id == "u_target" for event in updated.notification_feed))
-        self.assertTrue(any(event.user_id == "u_mod" for event in updated.notification_feed))
-        self.assertTrue(any(event.user_id == "u_sergeant" for event in updated.notification_feed))
+        messages_by_user = {event.user_id: event.message for event in updated.notification_feed}
+        self.assertEqual(
+            messages_by_user["u_target"],
+            "You have been taken into custody by the police department for questioning and cannot interact with others for 5 minutes.",
+        )
+        self.assertIn("has been taken into custody by the police department", messages_by_user["u_mod"])
+        self.assertEqual(messages_by_user["u_sergeant"], "You took target into police custody for 5 minutes.")
 
         with self.assertRaises(ConflictProblem):
             self.service.give_money(
@@ -2532,6 +2570,13 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertIsNone(updated.sergeant_capture_user_id)
         self.assertIsNone(updated.sergeant_capture_expires_at_epoch_seconds)
         self.assertTrue(any("court ordered to be released" in event.message for event in updated.notification_feed))
+        self.assertTrue(
+            any(
+                event.user_id == "u_target"
+                and event.message == "You were court ordered to be released from police custody."
+                for event in updated.notification_feed
+            )
+        )
 
     def test_detective_can_investigate_last_three_player_transactions_for_jailed_target(self) -> None:
         started = self.service.start_session_from_room(
@@ -2659,7 +2704,7 @@ class GameplayServiceTests(unittest.TestCase):
             [transaction.transaction_kind for transaction in detective.power_state.detective_last_viewed_transactions],
             ["money_gift", "sale", "item_gift"],
         )
-        self.assertEqual(detective.power_state.detective_last_viewed_transactions[1].money_amount, 130)
+        self.assertEqual(detective.power_state.detective_last_viewed_transactions[1].money_amount, 125)
         self.assertEqual(detective.power_state.detective_last_viewed_transactions[1].item_name, "Knife")
         self.assertEqual(detective.power_state.detective_last_viewed_transactions[2].sender_user_id, "u_mob")
         self.assertTrue(any(event.user_id == "u_detective" for event in investigated.notification_feed))
@@ -3320,6 +3365,13 @@ class GameplayServiceTests(unittest.TestCase):
                 for event in after_report.notification_feed
             )
         )
+        self.assertTrue(
+            any(
+                event.user_id == "u_deputy"
+                and event.message == "You seem to be afraid to testify at court. You must remain silent during this trial."
+                for event in after_report.notification_feed
+            )
+        )
 
         after_selection = self.service.submit_accused_selection(
             SubmitAccusedSelectionCommand(
@@ -3337,6 +3389,17 @@ class GameplayServiceTests(unittest.TestCase):
             )
         )
         self.assertIsNotNone(after_start_voting.pending_trial)
+
+        with self.assertRaises(ConflictProblem) as exc_ctx:
+            self.service.submit_trial_vote(
+                SubmitTrialVoteCommand(
+                    game_id=after_start_voting.game_id,
+                    voter_user_id="u_deputy",
+                    vote="guilty",
+                    expected_version=after_start_voting.version,
+                )
+            )
+        self.assertEqual(str(exc_ctx.exception), "You are silenced and cannot vote during this trial.")
 
     def test_underboss_can_replace_juror_once(self) -> None:
         started = self.service.start_session_from_room(
@@ -3368,7 +3431,7 @@ class GameplayServiceTests(unittest.TestCase):
             SubmitAccusedSelectionCommand(
                 game_id=after_report.game_id,
                 selected_by_user_id="u_deputy",
-                accused_user_id="u_mob",
+                accused_user_id="u_deputy",
                 expected_version=after_report.version,
             )
         )
@@ -3389,7 +3452,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertIn("u_under", updated.pending_trial.jury_user_ids)
         self.assertNotIn(removed_juror_user_id, updated.pending_trial.jury_user_ids)
 
-    def test_kingpin_can_reduce_trial_clock_twice_on_different_trials(self) -> None:
+    def test_kingpin_can_start_jury_timer_twice_on_different_trials(self) -> None:
         started = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
                 room_id="r-kingpin",
@@ -3438,7 +3501,7 @@ class GameplayServiceTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(after_first_reduce.pending_trial.vote_deadline_epoch_seconds, 1205)
+        self.assertEqual(after_first_reduce.pending_trial.vote_deadline_epoch_seconds, 1215)
         kingpin = next(participant for participant in after_first_reduce.participants if participant.user_id == "u_kingpin")
         self.assertEqual(len(kingpin.power_state.kingpin_reduced_trial_keys), 1)
 
@@ -3924,14 +3987,87 @@ class GameplayServiceTests(unittest.TestCase):
                 game_id=after_buy.game_id,
                 seller_user_id="u_merchant",
                 inventory_item_id=merchant.inventory[0].item_id,
-                resale_price=335,
+                resale_price=95,
                 expected_version=after_buy.version,
             )
         )
         merchant_after_resale = next(
             participant for participant in after_resale.participants if participant.user_id == "u_merchant"
         )
-        self.assertEqual(merchant_after_resale.inventory[0].resale_price, 340)
+        self.assertEqual(merchant_after_resale.inventory[0].resale_price, 95)
+
+    def test_non_merchant_can_set_resale_price_and_sell_inventory_item(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-non-merchant-sales",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput(
+                        user_id="u_hobo",
+                        username="hobo",
+                        faction="Mob",
+                        role_name="Knife Hobo",
+                        rank=1,
+                        starting_balance=200,
+                    ),
+                    StartSessionParticipantInput(
+                        user_id="u_police",
+                        username="police",
+                        faction="Police",
+                        role_name="Chief of Police",
+                        rank=1,
+                        starting_balance=300,
+                    ),
+                ],
+                catalog=[],
+            )
+        )
+
+        hobo = next(participant for participant in started.participants if participant.user_id == "u_hobo")
+        self.assertEqual(len(hobo.inventory), 1)
+        item_id = hobo.inventory[0].item_id
+
+        after_resale = self.service.set_inventory_resale_price(
+            SetInventoryResalePriceCommand(
+                game_id=started.game_id,
+                seller_user_id="u_hobo",
+                inventory_item_id=item_id,
+                resale_price=57,
+                expected_version=started.version,
+            )
+        )
+        hobo_after_resale = next(participant for participant in after_resale.participants if participant.user_id == "u_hobo")
+        self.assertEqual(hobo_after_resale.inventory[0].resale_price, 57)
+
+        after_sale_offer = self.service.sell_inventory_item(
+            SellInventoryItemCommand(
+                game_id=after_resale.game_id,
+                seller_user_id="u_hobo",
+                buyer_user_id="u_police",
+                inventory_item_id=item_id,
+                expected_version=after_resale.version,
+            )
+        )
+        self.assertEqual(len(after_sale_offer.pending_sale_offers), 1)
+        sale_offer_id = after_sale_offer.pending_sale_offers[0].sale_offer_id
+
+        after_accept = self.service.respond_sale_offer(
+            RespondSaleOfferCommand(
+                game_id=after_sale_offer.game_id,
+                buyer_user_id="u_police",
+                sale_offer_id=sale_offer_id,
+                accept=True,
+                expected_version=after_sale_offer.version,
+            )
+        )
+        hobo_after_sale = next(participant for participant in after_accept.participants if participant.user_id == "u_hobo")
+        police_after_sale = next(participant for participant in after_accept.participants if participant.user_id == "u_police")
+        self.assertEqual(hobo_after_sale.money_balance, 257)
+        self.assertEqual(police_after_sale.money_balance, 243)
+        self.assertEqual(len(hobo_after_sale.inventory), 0)
+        self.assertEqual(len(police_after_sale.inventory), 1)
+        self.assertEqual(police_after_sale.inventory[0].item_id, item_id)
 
     def test_supply_item_reactivates_when_merchant_sells_item_back_to_supply(self) -> None:
         started = self.service.start_session_from_room(
@@ -4563,6 +4699,9 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(seller_after.money_balance, 380)
         self.assertEqual(buyer_after.money_balance, 300)
         self.assertEqual(len(after_decline.pending_sale_offers), 0)
+        self.assertIsNone(after_decline.latest_public_notice)
+        decline_notifications = [event for event in after_decline.notification_feed if "declined merchant's sale offer for Knife." in event.message]
+        self.assertEqual({event.user_id for event in decline_notifications}, {"u_merchant", "u_police", "u_mod"})
 
     def test_sale_offer_accept_with_insufficient_funds_notifies_buyer_and_records_decline_notice(self) -> None:
         started = self.service.start_session_from_room(
@@ -4645,7 +4784,9 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(len(latest.pending_sale_offers), 0)
         self.assertEqual(len(seller_after.inventory), 1)
         self.assertEqual(len(buyer_after.inventory), 0)
-        self.assertEqual(latest.latest_public_notice, "police declined merchant's sale offer for Knife.")
+        self.assertIsNone(latest.latest_public_notice)
+        decline_notifications = [event for event in latest.notification_feed if event.message == "police declined merchant's sale offer for Knife."]
+        self.assertEqual({event.user_id for event in decline_notifications}, {"u_merchant", "u_police", "u_mod"})
 
     def test_gift_offer_decline_keeps_item_with_giver(self) -> None:
         started = self.service.start_session_from_room(
@@ -4716,6 +4857,8 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(len(giver_after.inventory), 1)
         self.assertEqual(len(receiver_after.inventory), 0)
         self.assertEqual(len(after_decline.pending_gift_offers), 0)
+        decline_notifications = [event for event in after_decline.notification_feed if "declined merchant's gift offer for Knife." in event.message]
+        self.assertEqual({event.user_id for event in decline_notifications}, {"u_merchant", "u_police", "u_mod"})
 
     def test_respond_gift_offer_is_blocked_outside_information_phase(self) -> None:
         started = self.service.start_session_from_room(

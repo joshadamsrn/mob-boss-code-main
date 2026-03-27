@@ -84,7 +84,7 @@
                     <form method="post" action="/games/{{ page.game_id }}/activate-kingpin-reduce-clock">
                         {% csrf_token %}
                         <input type="hidden" name="expected_version" value="{{ page.version }}">
-                        <button type="submit" class="btn btn-dark btn-sm">Reduce Trial Clock</button>
+                        <button type="submit" class="btn btn-dark btn-sm">Start 15s Jury Timer</button>
                     </form>
                 {% else %}
                     <div class="alert alert-secondary py-2 px-3 mb-0">Use this during jury voting, up to two different trials.</div>
@@ -373,8 +373,8 @@
                     >
                         <div class="fw-semibold mb-1">{{ superpower_panel.reveal_state.target_username }} Transaction History</div>
                         {% if superpower_panel.reveal_state.transaction_rows %}
-                            <div class="table-responsive">
-                                <table class="table table-sm align-middle mb-0">
+                            <div class="table-responsive detective-investigation-table-wrap">
+                                <table class="table table-sm align-middle mb-0 detective-investigation-table">
                                     <thead>
                                         <tr>
                                             <th scope="col">Time stamp</th>

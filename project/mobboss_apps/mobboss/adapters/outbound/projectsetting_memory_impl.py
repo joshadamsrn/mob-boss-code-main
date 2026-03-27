@@ -12,7 +12,7 @@ from project.mobboss_apps.mobboss.ports.projectsetting import MediaProjectSettin
 
 class MemoryProjectSettingOutboundPortImpl(ProjectSettingOutboundPort):
     DEFAULT_MINIMUM_LAUNCH_PLAYERS = 7
-    DEFAULT_STATE_POLL_INTERVAL_SECONDS = 5
+    DEFAULT_STATE_POLL_INTERVAL_SECONDS = 3
     DEFAULT_AUTO_SHUFFLE_INTERVAL_SECONDS = 60
 
     def __init__(
@@ -101,7 +101,7 @@ class MemoryProjectSettingOutboundPortImpl(ProjectSettingOutboundPort):
             room_project_settings=RoomProjectSettingsDTO(
                 minimum_launch_players=1,
                 dev_mode=True,
-                state_poll_interval_seconds=5,
+                state_poll_interval_seconds=3,
                 auto_shuffle_interval_seconds=10,
             ),
             media_project_settings=MediaProjectSettingsDTO(media_root=None, media_url="/media/"),
@@ -112,4 +112,3 @@ class MemoryProjectSettingOutboundPortImpl(ProjectSettingOutboundPort):
 
     def get_media_project_settings(self) -> MediaProjectSettingsDTO:
         return self._media_project_settings
-
