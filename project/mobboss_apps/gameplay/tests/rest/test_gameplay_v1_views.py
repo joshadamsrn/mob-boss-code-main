@@ -13,9 +13,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     GameDetailsSnapshot,
+    GiftOfferSnapshot,
     InventoryItemStateSnapshot,
+    MoneyGiftOfferSnapshot,
     NotificationEventSnapshot,
     ParticipantStateSnapshot,
+    SaleOfferSnapshot,
     TrialStateSnapshot,
 )
 from project.mobboss_apps.gameplay.v1_views import (  # noqa: E402
@@ -257,6 +260,85 @@ class GameplayV1ViewTests(SimpleTestCase):
         self.assertFalse(payload["can_submit_accused_selection"])
         self.assertFalse(payload["can_submit_jury_vote"])
         self.assertFalse(payload["can_submit_tamper_vote"])
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_game_detail_includes_offer_usernames(self, mock_get_container) -> None:
+        self.gameplay.snapshot = GameDetailsSnapshot(
+            game_id="g-1",
+            room_id="r-1",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="information",
+            round_number=1,
+            version=1,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_p1",
+                    username="p1",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_p2",
+                    username="p2",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+            catalog=[],
+            pending_trial=None,
+            pending_gift_offers=[
+                GiftOfferSnapshot(
+                    gift_offer_id="gift-1",
+                    giver_user_id="u_p2",
+                    receiver_user_id="u_p1",
+                    inventory_item_id="inv-1",
+                    item_display_name="Knife",
+                    created_at_epoch_seconds=200,
+                )
+            ],
+            pending_money_gift_offers=[
+                MoneyGiftOfferSnapshot(
+                    money_gift_offer_id="money-1",
+                    giver_user_id="u_p2",
+                    receiver_user_id="u_p1",
+                    amount=40,
+                    created_at_epoch_seconds=201,
+                )
+            ],
+            pending_sale_offers=[
+                SaleOfferSnapshot(
+                    sale_offer_id="sale-1",
+                    seller_user_id="u_p2",
+                    buyer_user_id="u_p1",
+                    inventory_item_id="inv-2",
+                    item_display_name="Vest",
+                    sale_price=80,
+                    created_at_epoch_seconds=202,
+                )
+            ],
+        )
+        mock_get_container.return_value = self.container
+        request = self.factory.get("/gameplay/v1/games/g-1")
+        request.user = self.player
+
+        response = GameDetailView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertEqual(payload["pending_gift_offers"][0]["giver_username"], "p2")
+        self.assertEqual(payload["pending_gift_offers"][0]["receiver_username"], "p1")
+        self.assertEqual(payload["pending_money_gift_offers"][0]["giver_username"], "p2")
+        self.assertEqual(payload["pending_sale_offers"][0]["seller_username"], "p2")
+        self.assertEqual(payload["pending_sale_offers"][0]["buyer_username"], "p1")
 
     @patch("project.mobboss_apps.gameplay.v1_views.get_container")
     def test_game_detail_normalizes_legacy_inventory_default_image_paths(self, mock_get_container) -> None:

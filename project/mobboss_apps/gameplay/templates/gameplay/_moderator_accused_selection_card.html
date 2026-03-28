@@ -3,11 +3,11 @@
         <h2 class="h6 mb-3">Accused Selection</h2>
         <div id="pendingTrialPanel">
             {% if page.pending_trial %}
-                <div class="small text-secondary">Murdered: {{ page.pending_trial.murdered_user_id }}</div>
+                <div class="small text-secondary">Murdered: {{ pending_trial_murdered_username }}</div>
                 <div class="small text-secondary">
                     Current responder:
-                    {% if page.pending_trial.current_responder_user_id %}
-                        {{ page.pending_trial.current_responder_user_id }}
+                    {% if pending_trial_current_responder_username %}
+                        {{ pending_trial_current_responder_username }}
                     {% else %}
                         no one yet
                     {% endif %}

@@ -15,11 +15,14 @@ if str(REPO_ROOT) not in sys.path:
 from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     CatalogItemStateSnapshot,
     GameDetailsSnapshot,
+    GiftOfferSnapshot,
     InventoryItemStateSnapshot,
+    MoneyGiftOfferSnapshot,
     NotificationEventSnapshot,
     ParticipantPowerStateSnapshot,
     ParticipantStateSnapshot,
     PlayerTransactionSnapshot,
+    SaleOfferSnapshot,
     TrialStateSnapshot,
 )
 from project.mobboss_apps.gameplay.views import (  # noqa: E402
@@ -170,6 +173,175 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(other_row.role_label, "Hidden")
         self.assertTrue(captured_context["superpower_panel"]["show"])
         self.assertEqual(captured_context["superpower_panel"]["role_name"], "Chief of Police")
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_player_context_labels_offer_participants_with_usernames(self, mock_render, mock_get_container) -> None:
+        snapshot = replace(
+            _snapshot(),
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_merchant",
+                    username="merchant",
+                    faction="Merchant",
+                    role_name="Merchant",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+            pending_gift_offers=[
+                GiftOfferSnapshot(
+                    gift_offer_id="gift-1",
+                    giver_user_id="u_mob",
+                    receiver_user_id="u_police",
+                    inventory_item_id="inv-1",
+                    item_display_name="Knife",
+                    created_at_epoch_seconds=150,
+                )
+            ],
+            pending_money_gift_offers=[
+                MoneyGiftOfferSnapshot(
+                    money_gift_offer_id="money-1",
+                    giver_user_id="u_mob",
+                    receiver_user_id="u_police",
+                    amount=40,
+                    created_at_epoch_seconds=151,
+                )
+            ],
+            pending_sale_offers=[
+                SaleOfferSnapshot(
+                    sale_offer_id="sale-1",
+                    seller_user_id="u_merchant",
+                    buyer_user_id="u_police",
+                    inventory_item_id="inv-2",
+                    item_display_name="Vest",
+                    sale_price=80,
+                    created_at_epoch_seconds=152,
+                )
+            ],
+        )
+
+        class _OfferNameStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return snapshot
+
+        class _OfferNameStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _OfferNameStubGameplayInboundPort()
+                self.rooms_inbound_port = None
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _OfferNameStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-ctx")
+        request.user = self.player
+
+        response = detail(request, game_id="g-ctx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured_context["incoming_gift_offers"][0]["giver_username"], "mob")
+        self.assertEqual(captured_context["outgoing_gift_offers"], [])
+        self.assertEqual(captured_context["incoming_money_gift_offers"][0]["giver_username"], "mob")
+        self.assertEqual(captured_context["incoming_sale_offers"][0]["seller_username"], "merchant")
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_moderator_context_labels_accused_selection_users_with_usernames(self, mock_render, mock_get_container) -> None:
+        snapshot = replace(
+            _snapshot(),
+            phase="accused_selection",
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="dead",
+                    money_balance=300,
+                ),
+            ],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_mob",
+                murderer_user_id=None,
+                accused_user_id=None,
+                accused_selection_cursor=["u_police"],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=[],
+                vote_deadline_epoch_seconds=None,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+                silenced_user_ids=[],
+                gangster_tamper_target_user_id=None,
+                gangster_tamper_actor_user_id=None,
+                gangster_tamper_vote_deadline_epoch_seconds=None,
+            ),
+        )
+
+        class _AccusedSelectionNameStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return snapshot
+
+        class _AccusedSelectionNameStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _AccusedSelectionNameStubGameplayInboundPort()
+                self.rooms_inbound_port = None
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _AccusedSelectionNameStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-ctx")
+        request.user = self.moderator
+
+        response = detail(request, game_id="g-ctx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured_context["pending_trial_murdered_username"], "mob")
+        self.assertEqual(captured_context["pending_trial_current_responder_username"], "police")
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")

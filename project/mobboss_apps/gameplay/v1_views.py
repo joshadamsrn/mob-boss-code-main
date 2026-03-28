@@ -80,6 +80,13 @@ def _normalized_inventory_item_image_path(*, classification: str, image_path: st
     return normalized_image_path
 
 
+def _display_name_for_user(participant_name_by_id: dict[str, str], user_id: str | None, *, unknown: str = "Unknown Player") -> str | None:
+    if not user_id:
+        return None
+    name = str(participant_name_by_id.get(user_id, "")).strip()
+    return name or unknown
+
+
 @problem_details
 def index(request: HttpRequest) -> JsonResponse:
     StatusIndexRequestDTO.from_payload({"method": request.method})
@@ -109,18 +116,10 @@ def _to_participant_dict(
         data["rank"] = participant.rank
         data["money_balance"] = participant.money_balance
         data["is_juror"] = _is_trial_juror(snapshot, participant.user_id)
-        data["murdered_by_username"] = (
-            participant_name_by_id.get(participant.murdered_by_user_id, participant.murdered_by_user_id)
-            if participant.murdered_by_user_id
-            else None
-        )
-        data["accused_by_username"] = (
-            participant_name_by_id.get(participant.accused_by_user_id, participant.accused_by_user_id)
-            if participant.accused_by_user_id
-            else None
-        )
+        data["murdered_by_username"] = _display_name_for_user(participant_name_by_id, participant.murdered_by_user_id)
+        data["accused_by_username"] = _display_name_for_user(participant_name_by_id, participant.accused_by_user_id)
         data["convicted_by_usernames"] = [
-            participant_name_by_id.get(user_id, user_id) for user_id in participant.convicted_by_user_ids
+            _display_name_for_user(participant_name_by_id, user_id) for user_id in participant.convicted_by_user_ids
         ]
         if participant.faction == "Merchant":
             data["money_goal"] = getStartingMoney(player_count, participant.role_name) + goal_bonus
@@ -197,6 +196,7 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
         "ended_at_epoch_seconds": snapshot.ended_at_epoch_seconds,
         "winning_faction": snapshot.winning_faction,
         "winning_user_id": snapshot.winning_user_id,
+        "winning_username": _display_name_for_user(participant_name_by_id, snapshot.winning_user_id),
         "current_police_leader_user_id": snapshot.current_police_leader_user_id,
         "current_mob_leader_user_id": snapshot.current_mob_leader_user_id,
         "latest_public_notice": snapshot.latest_public_notice,
@@ -218,7 +218,9 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
             {
                 "gift_offer_id": offer.gift_offer_id,
                 "giver_user_id": offer.giver_user_id,
+                "giver_username": _display_name_for_user(participant_name_by_id, offer.giver_user_id),
                 "receiver_user_id": offer.receiver_user_id,
+                "receiver_username": _display_name_for_user(participant_name_by_id, offer.receiver_user_id),
                 "inventory_item_id": offer.inventory_item_id,
                 "item_display_name": offer.item_display_name,
                 "created_at_epoch_seconds": offer.created_at_epoch_seconds,
@@ -230,7 +232,9 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
             {
                 "money_gift_offer_id": offer.money_gift_offer_id,
                 "giver_user_id": offer.giver_user_id,
+                "giver_username": _display_name_for_user(participant_name_by_id, offer.giver_user_id),
                 "receiver_user_id": offer.receiver_user_id,
+                "receiver_username": _display_name_for_user(participant_name_by_id, offer.receiver_user_id),
                 "amount": offer.amount,
                 "created_at_epoch_seconds": offer.created_at_epoch_seconds,
             }
@@ -241,7 +245,9 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
             {
                 "sale_offer_id": offer.sale_offer_id,
                 "seller_user_id": offer.seller_user_id,
+                "seller_username": _display_name_for_user(participant_name_by_id, offer.seller_user_id),
                 "buyer_user_id": offer.buyer_user_id,
+                "buyer_username": _display_name_for_user(participant_name_by_id, offer.buyer_user_id),
                 "inventory_item_id": offer.inventory_item_id,
                 "item_display_name": offer.item_display_name,
                 "sale_price": offer.sale_price,
@@ -376,7 +382,7 @@ def _active_protective_custody_view(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "expires_at_epoch_seconds": int(expires_at_epoch_seconds),
     }
 
@@ -402,7 +408,7 @@ def _active_asset_freeze_view(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "expires_at_epoch_seconds": int(expires_at_epoch_seconds),
     }
 
@@ -428,7 +434,7 @@ def _active_sergeant_capture_view(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "expires_at_epoch_seconds": int(expires_at_epoch_seconds),
     }
 

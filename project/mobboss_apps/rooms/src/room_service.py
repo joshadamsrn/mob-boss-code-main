@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import hashlib
 import random
 import time
 from decimal import Decimal, ROUND_HALF_UP
@@ -115,7 +114,6 @@ class RoomsService(RoomsInboundPort):
             items=_build_required_default_items(),
             secret_mob_word="",
         )
-        room = self._assign_roles_for_joined_members(room, shuffle=False)
         self._repository.save_room(room)
         return self._to_summary(room)
 
@@ -193,7 +191,6 @@ class RoomsService(RoomsInboundPort):
                 )
             )
         updated = replace(room, members=members)
-        updated = self._assign_roles_for_joined_members(updated, shuffle=False)
         self._repository.save_room(updated)
         return updated
 
@@ -211,7 +208,6 @@ class RoomsService(RoomsInboundPort):
             raise ValueError("User is not a room member.")
         members[idx] = replace(members[idx], membership_status="left", is_ready=False, assigned_role=None)
         updated = replace(room, members=members)
-        updated = self._assign_roles_for_joined_members(updated, shuffle=False)
         self._repository.save_room(updated)
         return updated
 
@@ -375,7 +371,7 @@ class RoomsService(RoomsInboundPort):
         room = self._assign_roles_for_joined_members(
             room,
             shuffle=True,
-            seed=self._now_epoch_seconds(),
+            seed=self._random_role_seed(),
         )
         room = _apply_launch_catalog_pricing(room, participant_count=participant_count)
         if self._gameplay_inbound_port is None:
@@ -512,16 +508,20 @@ class RoomsService(RoomsInboundPort):
 
         members = list(room.members)
         for idx, member in enumerate(members):
-            if member.user_id == room.moderator_user_id and member.assigned_role is not None:
-                members[idx] = replace(member, assigned_role=None, starting_balance=0)
+            if member.assigned_role is None:
+                continue
+            reset_balance = 0 if member.user_id == room.moderator_user_id else member.starting_balance
+            members[idx] = replace(member, assigned_role=None, starting_balance=reset_balance)
 
         if joined_count == 0:
             return replace(room, members=members)
 
-        stable_seed = _stable_role_seed(room.room_id, [members[idx].user_id for idx in joined_indexes])
-        slots = _build_role_slots(joined_count, rng=random.Random(stable_seed))
-        if shuffle:
-            random.Random(seed).shuffle(slots)
+        if not shuffle:
+            return replace(room, members=members)
+
+        rng = random.Random(seed)
+        slots = _build_role_slots(joined_count, rng=rng)
+        rng.shuffle(slots)
 
         balance_player_count = max(MIN_LAUNCH_PLAYERS, min(joined_count, MAX_ROOM_PLAYERS))
         for offset, member_index in enumerate(joined_indexes):
@@ -533,6 +533,10 @@ class RoomsService(RoomsInboundPort):
             )
 
         return replace(room, members=members)
+
+    @staticmethod
+    def _random_role_seed() -> int:
+        return random.SystemRandom().randrange(1, 2**63)
 
 
 def _round_to_nearest_ten(value: int) -> int:
@@ -652,12 +656,6 @@ def _sample_without_replacement(*, rng: random.Random, candidates: list[str], co
         rng.shuffle(picked)
         return picked
     return rng.sample(candidates, count)
-
-
-def _stable_role_seed(room_id: str, joined_user_ids: list[str]) -> int:
-    seed_text = f"{room_id}|{'|'.join(sorted(joined_user_ids))}"
-    digest = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
-    return int(digest[:16], 16)
 
 
 def _starting_balance_for_role(role: RoomRoleAssignmentSnapshot, *, player_count: int) -> int:

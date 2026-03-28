@@ -59,7 +59,7 @@
             <div class="room-summary-head {% if is_moderator or is_joined %}room-summary-head-has-launch{% endif %}">
                 <div class="room-title-block text-center">
                     <h1 class="h4 mb-1 page-hero-title">{{ room.name }}</h1>
-                    <p class="text-secondary mb-0 small">Moderator: {{ room.moderator_user_id }}</p>
+                    <p class="text-secondary mb-0 small">Moderator: {{ moderator_member.username }}</p>
                 </div>
                 {% if is_joined and not is_view_as_mode %}
                     <div class="room-leave-slot">
@@ -269,12 +269,12 @@
                                         </span>
                                     </div>
                                 </div>
-                                {% if actor_is_moderator and member.assigned_role %}
+                                {% if actor_is_moderator and member.assigned_role and not is_lobby %}
                                     <div class="small text-secondary mt-2">
                                         Role: {{ member.assigned_role.role_name }}{% if member.assigned_role.faction != "Merchant" %} ({{ member.assigned_role.faction }} #{{ member.assigned_role.rank }}){% endif %}
                                     </div>
                                 {% endif %}
-                                {% if actor_is_moderator and is_lobby and not is_view_as_mode and member.membership_status == "joined" %}
+                                {% if actor_is_moderator and dev_mode_enabled and is_lobby and not is_view_as_mode and member.membership_status == "joined" %}
                                     <form method="post" action="/rooms/{{ room.room_id }}/assign-role" class="mt-2">
                                         {% csrf_token %}
                                         <input type="hidden" name="target_user_id" value="{{ member.user_id }}">

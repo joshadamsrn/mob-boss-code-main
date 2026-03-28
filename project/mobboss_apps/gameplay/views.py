@@ -587,6 +587,61 @@ def _viewer_notification_history(session, viewer_user_id: str) -> list[object]:
     )
 
 
+def _display_name_for_user(participant_name_by_id: dict[str, str], user_id: str | None, *, unknown: str = "Unknown Player") -> str:
+    if not user_id:
+        return unknown
+    name = str(participant_name_by_id.get(user_id, "")).strip()
+    return name or unknown
+
+
+def _gift_offer_view_rows(offers, *, participant_name_by_id: dict[str, str]) -> list[dict[str, object]]:
+    return [
+        {
+            "gift_offer_id": offer.gift_offer_id,
+            "giver_user_id": offer.giver_user_id,
+            "giver_username": _display_name_for_user(participant_name_by_id, offer.giver_user_id),
+            "receiver_user_id": offer.receiver_user_id,
+            "receiver_username": _display_name_for_user(participant_name_by_id, offer.receiver_user_id),
+            "inventory_item_id": offer.inventory_item_id,
+            "item_display_name": offer.item_display_name,
+            "created_at_epoch_seconds": offer.created_at_epoch_seconds,
+        }
+        for offer in offers
+    ]
+
+
+def _money_gift_offer_view_rows(offers, *, participant_name_by_id: dict[str, str]) -> list[dict[str, object]]:
+    return [
+        {
+            "money_gift_offer_id": offer.money_gift_offer_id,
+            "giver_user_id": offer.giver_user_id,
+            "giver_username": _display_name_for_user(participant_name_by_id, offer.giver_user_id),
+            "receiver_user_id": offer.receiver_user_id,
+            "receiver_username": _display_name_for_user(participant_name_by_id, offer.receiver_user_id),
+            "amount": offer.amount,
+            "created_at_epoch_seconds": offer.created_at_epoch_seconds,
+        }
+        for offer in offers
+    ]
+
+
+def _sale_offer_view_rows(offers, *, participant_name_by_id: dict[str, str]) -> list[dict[str, object]]:
+    return [
+        {
+            "sale_offer_id": offer.sale_offer_id,
+            "seller_user_id": offer.seller_user_id,
+            "seller_username": _display_name_for_user(participant_name_by_id, offer.seller_user_id),
+            "buyer_user_id": offer.buyer_user_id,
+            "buyer_username": _display_name_for_user(participant_name_by_id, offer.buyer_user_id),
+            "inventory_item_id": offer.inventory_item_id,
+            "item_display_name": offer.item_display_name,
+            "sale_price": offer.sale_price,
+            "created_at_epoch_seconds": offer.created_at_epoch_seconds,
+        }
+        for offer in offers
+    ]
+
+
 def _is_leadership_transition_notification(message: str) -> bool:
     normalized = str(message).strip()
     return normalized in {
@@ -1071,9 +1126,10 @@ def _build_superpower_panel(
             and effective_vote_count < len(pending_trial.jury_user_ids)
             and bool(juror_rows)
         )
-        target_username = participant_name_by_id.get(
-            pending_trial.gangster_tamper_target_user_id if pending_trial is not None else "",
-            "",
+        target_username = _display_name_for_user(
+            participant_name_by_id,
+            pending_trial.gangster_tamper_target_user_id if pending_trial is not None else None,
+            unknown="",
         )
         return {
             **base_panel,
@@ -1258,7 +1314,10 @@ def _build_superpower_panel(
                 "target_username": (
                     acquire_target.username
                     if acquire_target is not None
-                    else current_participant.power_state.supplier_acquire_target_user_id
+                    else _display_name_for_user(
+                        participant_name_by_id,
+                        current_participant.power_state.supplier_acquire_target_user_id,
+                    )
                 ),
             }
             if current_participant.power_state.supplier_acquire_target_user_id
@@ -1402,7 +1461,7 @@ def _active_protective_custody_state(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "activated_by_user_id": activated_by_user_id,
         "expires_at_epoch_seconds": expires_at,
     }
@@ -1422,7 +1481,7 @@ def _active_sheriff_jury_log_reveal_state(
         return None
     return {
         "jury_user_ids": jury_user_ids,
-        "jury_usernames": [participant_name_by_id.get(user_id, user_id) for user_id in jury_user_ids],
+        "jury_usernames": [_display_name_for_user(participant_name_by_id, user_id) for user_id in jury_user_ids],
         "visible_until_epoch_seconds": visible_until,
     }
 
@@ -1450,7 +1509,7 @@ def _active_detective_investigation_state(
     target_user_id = current_participant.power_state.detective_investigation_target_user_id
     if not target_user_id:
         return None
-    target_username = participant_name_by_id.get(target_user_id, target_user_id)
+    target_username = _display_name_for_user(participant_name_by_id, target_user_id)
     total_transactions = current_participant.power_state.detective_last_viewed_transaction_total
     sorted_transactions = sorted(
         current_participant.power_state.detective_last_viewed_transactions,
@@ -1490,7 +1549,7 @@ def _active_inspector_record_inspection_state(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "role_name": role_name,
         "visible_until_epoch_seconds": visible_until,
     }
@@ -1513,8 +1572,8 @@ def _detective_transaction_summary_text(
     *,
     participant_name_by_id: dict[str, str],
 ) -> str:
-    sender_username = participant_name_by_id.get(transaction.sender_user_id, transaction.sender_user_id)
-    recipient_username = participant_name_by_id.get(transaction.recipient_user_id, transaction.recipient_user_id)
+    sender_username = _display_name_for_user(participant_name_by_id, transaction.sender_user_id)
+    recipient_username = _display_name_for_user(participant_name_by_id, transaction.recipient_user_id)
     time_text = _format_local_time(transaction.created_at_epoch_seconds)
     item_or_money = transaction.item_name or (f"${transaction.money_amount}" if transaction.money_amount else "item")
     if transaction.transaction_kind == "sale":
@@ -1591,7 +1650,7 @@ def _active_asset_freeze_state(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "activated_by_user_id": activated_by_user_id,
         "expires_at_epoch_seconds": expires_at,
     }
@@ -1613,7 +1672,7 @@ def _active_sergeant_capture_state(
         return None
     return {
         "target_user_id": target_user_id,
-        "target_username": participant_name_by_id.get(target_user_id, target_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, target_user_id),
         "activated_by_user_id": activated_by_user_id,
         "expires_at_epoch_seconds": expires_at,
     }
@@ -1634,7 +1693,7 @@ def _active_felon_escape_state(
         return None
     return {
         "target_user_id": felon_user_id,
-        "target_username": participant_name_by_id.get(felon_user_id, felon_user_id),
+        "target_username": _display_name_for_user(participant_name_by_id, felon_user_id),
         "expires_at_epoch_seconds": expires_at,
     }
 
@@ -1855,9 +1914,10 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             ),
             "is_juror": current_user_is_juror,
             "accused_user_id": session.pending_trial.accused_user_id if session.pending_trial is not None else None,
-            "accused_username": participant_name_by_id.get(
-                session.pending_trial.accused_user_id if session.pending_trial is not None else "",
-                "Unknown",
+            "accused_username": _display_name_for_user(
+                participant_name_by_id,
+                session.pending_trial.accused_user_id if session.pending_trial is not None else None,
+                unknown="Unknown",
             ),
             "has_voted": current_user_has_voted,
             "can_vote": is_jury_voting_active and current_user_is_juror and not current_user_has_voted,
@@ -1874,7 +1934,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             "tamper_vote_deadline_epoch_seconds": (
                 session.pending_trial.gangster_tamper_vote_deadline_epoch_seconds if session.pending_trial is not None else None
             ),
-            "tamper_target_username": participant_name_by_id.get(tamper_target_user_id or "", "Unknown"),
+            "tamper_target_username": _display_name_for_user(participant_name_by_id, tamper_target_user_id, unknown="Unknown"),
             "waiting_for_moderator": (current_user_is_juror and not is_jury_voting_active),
             "vote_deadline_epoch_seconds": (
                 session.pending_trial.vote_deadline_epoch_seconds if session.pending_trial is not None else None
@@ -1897,13 +1957,31 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             ),
             "viewer_can_start_voting": actor_is_moderator,
             "is_voting_active": is_jury_voting_active,
-            "accused_username": participant_name_by_id.get(
-                session.pending_trial.accused_user_id if session.pending_trial is not None else "",
-                "Unknown",
+            "accused_username": _display_name_for_user(
+                participant_name_by_id,
+                session.pending_trial.accused_user_id if session.pending_trial is not None else None,
+                unknown="Unknown",
             ),
-            "juror_usernames": [participant_name_by_id.get(user_id, user_id) for user_id in jury_user_ids],
-            "tampered_juror_username": participant_name_by_id.get(tamper_target_user_id or "", "") if tamper_target_user_id else "",
+            "juror_usernames": [_display_name_for_user(participant_name_by_id, user_id) for user_id in jury_user_ids],
+            "tampered_juror_username": (
+                _display_name_for_user(participant_name_by_id, tamper_target_user_id, unknown="")
+                if tamper_target_user_id
+                else ""
+            ),
         }
+        pending_trial_murdered_username = ""
+        pending_trial_current_responder_username = ""
+        if session.pending_trial is not None:
+            pending_trial_murdered_username = _display_name_for_user(
+                participant_name_by_id,
+                session.pending_trial.murdered_user_id,
+            )
+        if page.pending_trial is not None:
+            pending_trial_current_responder_username = _display_name_for_user(
+                participant_name_by_id,
+                page.pending_trial.current_responder_user_id,
+                unknown="",
+            )
         current_participant = next((participant for participant in session.participants if participant.user_id == current_user_id), None)
         can_view_accused_selection = (
             page.phase == "accused_selection"
@@ -1985,24 +2063,30 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             ],
             key=lambda participant: participant.username.lower(),
         )
-        incoming_gift_offers = [
-            offer for offer in session.pending_gift_offers if offer.receiver_user_id == current_user_id
-        ]
-        outgoing_gift_offers = [
-            offer for offer in session.pending_gift_offers if offer.giver_user_id == current_user_id
-        ]
-        incoming_money_gift_offers = [
-            offer for offer in session.pending_money_gift_offers if offer.receiver_user_id == current_user_id
-        ]
-        outgoing_money_gift_offers = [
-            offer for offer in session.pending_money_gift_offers if offer.giver_user_id == current_user_id
-        ]
-        incoming_sale_offers = [
-            offer for offer in session.pending_sale_offers if offer.buyer_user_id == current_user_id
-        ]
-        outgoing_sale_offers = [
-            offer for offer in session.pending_sale_offers if offer.seller_user_id == current_user_id
-        ]
+        incoming_gift_offers = _gift_offer_view_rows(
+            [offer for offer in session.pending_gift_offers if offer.receiver_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
+        outgoing_gift_offers = _gift_offer_view_rows(
+            [offer for offer in session.pending_gift_offers if offer.giver_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
+        incoming_money_gift_offers = _money_gift_offer_view_rows(
+            [offer for offer in session.pending_money_gift_offers if offer.receiver_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
+        outgoing_money_gift_offers = _money_gift_offer_view_rows(
+            [offer for offer in session.pending_money_gift_offers if offer.giver_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
+        incoming_sale_offers = _sale_offer_view_rows(
+            [offer for offer in session.pending_sale_offers if offer.buyer_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
+        outgoing_sale_offers = _sale_offer_view_rows(
+            [offer for offer in session.pending_sale_offers if offer.seller_user_id == current_user_id],
+            participant_name_by_id=participant_name_by_id,
+        )
         trial_result_notice = session.latest_public_notice or ""
         private_trial_notice = ""
         if session.latest_private_notice_user_id == current_user_id and session.latest_private_notice_message:
@@ -2010,7 +2094,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         game_result_notice = ""
         if session.status == "ended" and session.winning_faction:
             if session.winning_faction == "Merchant" and session.winning_user_id:
-                winner_name = participant_name_by_id.get(session.winning_user_id, session.winning_user_id)
+                winner_name = _display_name_for_user(participant_name_by_id, session.winning_user_id)
                 game_result_notice = f"Winner: {winner_name} (Merchant)."
             else:
                 game_result_notice = f"Winner: {session.winning_faction}."
@@ -2054,7 +2138,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         moderator_latest_jury_usernames = []
         if page.is_moderator and session.latest_jury_log_user_ids:
             moderator_latest_jury_usernames = [
-                participant_name_by_id.get(user_id, user_id) for user_id in session.latest_jury_log_user_ids
+                _display_name_for_user(participant_name_by_id, user_id) for user_id in session.latest_jury_log_user_ids
             ]
         mob_secret_word_panel = {
             "show": False,
@@ -2137,6 +2221,8 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "accused_candidate_rows": accused_candidate_rows,
                 "jury_prompt": jury_prompt,
                 "moderator_trial_control": moderator_trial_control,
+                "pending_trial_murdered_username": pending_trial_murdered_username,
+                "pending_trial_current_responder_username": pending_trial_current_responder_username,
                 "trial_result_notice": trial_result_notice,
                 "private_trial_notice": private_trial_notice,
                 "viewer_notifications": viewer_notifications,

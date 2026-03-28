@@ -483,6 +483,9 @@ def assign_role(request: HttpRequest, room_id: str) -> HttpResponse:
     if request.method != "POST":
         return redirect("rooms-detail", room_id=room_id)
     try:
+        container = get_container()
+        if not container.room_dev_mode:
+            raise ValueError("Role assignment is only available in dev mode.")
         resolved_role = _resolve_role_assignment_payload(request)
         payload = {
             "room_id": room_id,
@@ -493,7 +496,6 @@ def assign_role(request: HttpRequest, room_id: str) -> HttpResponse:
             "rank": resolved_role["rank"] or "1",
         }
         dto = AssignRoomRoleRequestDTO.from_payload(payload)
-        container = get_container()
         rooms_inbound = container.rooms_inbound_port
         rooms_inbound.assign_room_role(dto.to_command())
         messages.success(request, "Role assigned.")

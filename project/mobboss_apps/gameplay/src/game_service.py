@@ -2619,8 +2619,8 @@ class GameplayService(GameplayInboundPort):
 
         remaining_offers = [candidate for candidate in session.pending_sale_offers if candidate.sale_offer_id != command.sale_offer_id]
         participant_name_by_id = _participant_name_by_id(session.participants)
-        buyer_name = participant_name_by_id.get(offer.buyer_user_id, offer.buyer_user_id)
-        seller_name = participant_name_by_id.get(offer.seller_user_id, offer.seller_user_id)
+        buyer_name = _display_name_for_user(participant_name_by_id, offer.buyer_user_id)
+        seller_name = _display_name_for_user(participant_name_by_id, offer.seller_user_id)
         decline_notice = f"{buyer_name} declined {seller_name}'s sale offer for {offer.item_display_name}."
         decline_notifications = [
             (offer.seller_user_id, decline_notice),
@@ -2868,8 +2868,8 @@ class GameplayService(GameplayInboundPort):
         remaining_offers = [candidate for candidate in session.pending_gift_offers if candidate.gift_offer_id != command.gift_offer_id]
         if not command.accept:
             participant_name_by_id = _participant_name_by_id(session.participants)
-            receiver_name = participant_name_by_id.get(offer.receiver_user_id, offer.receiver_user_id)
-            giver_name = participant_name_by_id.get(offer.giver_user_id, offer.giver_user_id)
+            receiver_name = _display_name_for_user(participant_name_by_id, offer.receiver_user_id)
+            giver_name = _display_name_for_user(participant_name_by_id, offer.giver_user_id)
             decline_notice = f"{receiver_name} declined {giver_name}'s gift offer for {offer.item_display_name}."
             updated = replace(
                 session,
@@ -3055,8 +3055,8 @@ class GameplayService(GameplayInboundPort):
         ]
         if not command.accept:
             participant_name_by_id = _participant_name_by_id(session.participants)
-            receiver_name = participant_name_by_id.get(offer.receiver_user_id, offer.receiver_user_id)
-            giver_name = participant_name_by_id.get(offer.giver_user_id, offer.giver_user_id)
+            receiver_name = _display_name_for_user(participant_name_by_id, offer.receiver_user_id)
+            giver_name = _display_name_for_user(participant_name_by_id, offer.giver_user_id)
             decline_notice = f"{receiver_name} declined {giver_name}'s money gift offer of ${offer.amount}."
             updated = replace(
                 session,
@@ -3471,7 +3471,7 @@ def _raise_if_asset_frozen(
     if frozen_target_user_id != user_id:
         return
     participant_name_by_id = _participant_name_by_id(session.participants)
-    target_username = participant_name_by_id.get(user_id, user_id)
+    target_username = _display_name_for_user(participant_name_by_id, user_id)
     raise ConflictProblem(
         _build_asset_freeze_blocked_message(target_username),
         code="invalid_state",
@@ -4433,6 +4433,13 @@ def _participant_name_by_id(participants: list[ParticipantStateSnapshot]) -> dic
     return {participant.user_id: participant.username for participant in participants}
 
 
+def _display_name_for_user(participant_name_by_id: dict[str, str], user_id: str | None, *, unknown: str = "Unknown Player") -> str:
+    if not user_id:
+        return unknown
+    name = str(participant_name_by_id.get(user_id, "")).strip()
+    return name or unknown
+
+
 def _apply_armed_don_silence_for_upcoming_trial(
     participants: list[ParticipantStateSnapshot],
     *,
@@ -4572,7 +4579,7 @@ def _build_trial_outcome_notices(
     if pending_trial.verdict not in {"guilty", "innocent"}:
         return None, None, None
     participant_name_by_id = _participant_name_by_id(participants)
-    accused_username = participant_name_by_id.get(pending_trial.accused_user_id, pending_trial.accused_user_id)
+    accused_username = _display_name_for_user(participant_name_by_id, pending_trial.accused_user_id)
     verdict_label = "guilty" if pending_trial.verdict == "guilty" else "not guilty"
     is_hung_jury_mistrial = pending_trial.verdict == "innocent" and pending_trial.resolution == "hung_jury"
     notice = (
@@ -4837,7 +4844,7 @@ def _build_winner_notice(
         return "Mob wins. Police Department Shut Down Due to Police Brutality. Department Overrun by Mob."
     if winner_faction == "Merchant" and winner_user_id is not None:
         participant_name_by_id = _participant_name_by_id(participants)
-        winner_name = participant_name_by_id.get(winner_user_id, winner_user_id)
+        winner_name = _display_name_for_user(participant_name_by_id, winner_user_id)
         return f"Game ended. {winner_name} (Merchant) wins."
     return f"Game ended. {winner_faction} wins."
 

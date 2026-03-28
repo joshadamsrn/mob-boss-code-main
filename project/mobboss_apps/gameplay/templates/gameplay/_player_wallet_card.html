@@ -35,7 +35,7 @@
                     {% for offer in incoming_gift_offers %}
                         <div class="room-member-tile">
                             <div class="small mb-2">
-                                <strong>{{ offer.item_display_name }}</strong> offered by <strong>{{ offer.giver_user_id }}</strong>
+                                <strong>{{ offer.item_display_name }}</strong> offered by <strong>{{ offer.giver_username }}</strong>
                             </div>
                             <div class="mobile-form-actions offer-response-actions">
                                 <form method="post" action="/games/{{ page.game_id }}/respond-gift-offer">
@@ -67,7 +67,7 @@
                 <div class="small text-secondary mb-2">Gifts You Sent</div>
                 <ul class="small text-secondary mb-0 ps-3">
                     {% for offer in outgoing_gift_offers %}
-                        <li>{{ offer.item_display_name }} -> {{ offer.receiver_user_id }}</li>
+                        <li>{{ offer.item_display_name }} -> {{ offer.receiver_username }}</li>
                     {% endfor %}
                 </ul>
             {% endif %}
@@ -79,7 +79,7 @@
                     {% for offer in incoming_money_gift_offers %}
                         <div class="room-member-tile">
                             <div class="small mb-2">
-                                <strong>${{ offer.amount }}</strong> offered by <strong>{{ offer.giver_user_id }}</strong>
+                                <strong>${{ offer.amount }}</strong> offered by <strong>{{ offer.giver_username }}</strong>
                             </div>
                             <div class="mobile-form-actions offer-response-actions">
                                 <form method="post" action="/games/{{ page.game_id }}/respond-money-gift-offer">
@@ -111,7 +111,7 @@
                 <div class="small text-secondary mb-2">Money Gifts You Sent</div>
                 <ul class="small text-secondary mb-0 ps-3">
                     {% for offer in outgoing_money_gift_offers %}
-                        <li>${{ offer.amount }} -> {{ offer.receiver_user_id }}</li>
+                        <li>${{ offer.amount }} -> {{ offer.receiver_username }}</li>
                     {% endfor %}
                 </ul>
             {% endif %}
@@ -123,7 +123,7 @@
                     {% for offer in incoming_sale_offers %}
                         <div class="room-member-tile">
                             <div class="small mb-1">
-                                <strong>{{ offer.seller_user_id }}</strong> wants to sell you
+                                <strong>{{ offer.seller_username }}</strong> wants to sell you
                                 <strong>{{ offer.item_display_name }}</strong>.
                             </div>
                             <div class="small text-secondary mb-2">Price: ${{ offer.sale_price }}</div>
@@ -157,7 +157,7 @@
                 <div class="small text-secondary mb-2">Sales You Sent</div>
                 <ul class="small text-secondary mb-0 ps-3">
                     {% for offer in outgoing_sale_offers %}
-                        <li>{{ offer.item_display_name }} -> {{ offer.buyer_user_id }} (${{ offer.sale_price }})</li>
+                        <li>{{ offer.item_display_name }} -> {{ offer.buyer_username }} (${{ offer.sale_price }})</li>
                     {% endfor %}
                 </ul>
             {% endif %}

@@ -16,7 +16,7 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
     RoomMemberSnapshot,
     RoomRoleAssignmentSnapshot,
 )
-from project.mobboss_apps.rooms.views import detail  # noqa: E402
+from project.mobboss_apps.rooms.views import assign_role, detail  # noqa: E402
 
 
 def _room_snapshot() -> RoomDetailsSnapshot:
@@ -63,8 +63,13 @@ def _room_snapshot() -> RoomDetailsSnapshot:
 class _StubRoomsInboundPort:
     def __init__(self, room: RoomDetailsSnapshot) -> None:
         self._room = room
+        self.assigned_role_commands = []
 
     def get_room_details(self, _room_id: str) -> RoomDetailsSnapshot:
+        return self._room
+
+    def assign_room_role(self, command) -> RoomDetailsSnapshot:
+        self.assigned_role_commands.append(command)
         return self._room
 
 
@@ -97,9 +102,12 @@ class RoomDetailViewTests(SimpleTestCase):
 
         content = response.content.decode("utf-8")
 
+        self.assertIn("Moderator: moderator", content)
+        self.assertNotIn("Moderator: u_mod", content)
         self.assertContains(response, "Catalog (1)")
         self.assertIn("Items currently in Central Supply.", content)
-        self.assertIn("Role: Lieutenant", content)
+        self.assertNotIn("Role: Lieutenant", content)
+        self.assertNotIn('action="/rooms/r-1/assign-role"', content)
 
     def test_non_moderator_cannot_see_central_supply_catalog(self) -> None:
         request = self.factory.get("/rooms/r-1/")
@@ -114,6 +122,25 @@ class RoomDetailViewTests(SimpleTestCase):
         self.assertNotIn("Items currently in Central Supply.", content)
         self.assertNotIn("Pocket Pistol", content)
         self.assertNotIn("Role: Lieutenant", content)
+
+    @patch("project.mobboss_apps.rooms.views.messages.error")
+    @patch("project.mobboss_apps.rooms.views.messages.success")
+    def test_assign_role_rejected_when_dev_mode_disabled(self, _mock_success, _mock_error) -> None:
+        room = _room_snapshot()
+        container = _StubContainer(room)
+        request = self.factory.post(
+            "/rooms/r-1/assign-role",
+            data={"target_user_id": "u_1", "role_name": "Deputy"},
+        )
+        request.user = self.moderator_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = assign_role(request, room_id="r-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/rooms/r-1/")
+        self.assertEqual(container.rooms_inbound_port.assigned_role_commands, [])
+        _mock_error.assert_called_once_with(request, "Role assignment is only available in dev mode.")
 
 
 if __name__ == "__main__":

@@ -119,7 +119,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         required = {item.classification for item in details.items if item.classification in REQUIRED_ROOM_ITEM_CLASSIFICATIONS}
         self.assertEqual(required, set(REQUIRED_ROOM_ITEM_CLASSIFICATIONS))
 
-    def test_roles_auto_assign_as_members_join(self) -> None:
+    def test_roles_are_not_assigned_while_room_is_still_in_lobby(self) -> None:
         _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
 
         details = self.service.get_room_details(self.room_id)
@@ -130,57 +130,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertEqual(len(joined), 8)
         self.assertEqual(len(participants), 7)
         self.assertIsNone(moderator.assigned_role)
-        self.assertTrue(all(member.assigned_role is not None for member in participants))
-
-        factions = [m.assigned_role.faction for m in participants if m.assigned_role is not None]
-        self.assertEqual(factions.count("Police"), 3)
-        self.assertEqual(factions.count("Mob"), 3)
-        self.assertEqual(factions.count("Merchant"), 1)
-
-    def test_required_role_titles_are_always_present_for_seven_player_game(self) -> None:
-        _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
-
-        details = self.service.get_room_details(self.room_id)
-        role_names = {
-            member.assigned_role.role_name
-            for member in details.members
-            if member.membership_status == "joined" and member.assigned_role is not None
-        }
-        self.assertIn("Chief of Police", role_names)
-        self.assertIn("Mob Boss", role_names)
-        self.assertIn("Knife Hobo", role_names)
-        self.assertIn("Merchant", role_names)
-
-    def test_larger_games_always_include_required_anchor_roles_and_random_extra_merchant_roles(self) -> None:
-        for index in range(1, 11):
-            self.service.join_room(
-                JoinRoomCommand(
-                    room_id=self.room_id,
-                    user_id=f"u_{index}",
-                    username=f"p{index}",
-                )
-            )
-
-        details = self.service.get_room_details(self.room_id)
-        participant_roles = [
-            member.assigned_role
-            for member in details.members
-            if member.membership_status == "joined"
-            and member.user_id != "u_mod"
-            and member.assigned_role is not None
-        ]
-        role_names = {role.role_name for role in participant_roles}
-        merchant_role_names = [role.role_name for role in participant_roles if role.faction == "Merchant"]
-
-        self.assertIn("Chief of Police", role_names)
-        self.assertIn("Mob Boss", role_names)
-        self.assertIn("Knife Hobo", role_names)
-        self.assertIn("Merchant", role_names)
-        self.assertEqual(len(merchant_role_names), 2)
-        self.assertGreaterEqual(
-            len([role_name for role_name in merchant_role_names if role_name in {"Arms Dealer", "Smuggler", "Gun Runner", "Supplier"}]),
-            1,
-        )
+        self.assertTrue(all(member.assigned_role is None for member in participants))
 
     def test_only_moderator_can_assign_role(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_1", username="p1"))
@@ -535,8 +485,61 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertGreaterEqual(len(start_command.catalog), MIN_REQUIRED_ROOM_ITEMS)
         self.assertEqual(service.get_room_details(room.room_id).status, "in_progress")
 
-    @patch("project.mobboss_apps.rooms.src.room_service.random.Random.shuffle", side_effect=lambda seq: seq.reverse())
-    def test_launch_reshuffles_roles_when_game_starts(self, _mock_shuffle) -> None:
+    def test_launch_assigns_required_anchor_roles_for_seven_player_game(self) -> None:
+        repo = MemoryRoomsRepository()
+        gameplay = _StubGameplayInboundPort(game_id="game-r-anchors")
+        service = RoomsService(repo, gameplay_inbound_port=gameplay)
+        room = service.create_room(
+            CreateRoomCommand(name="Anchor Room", creator_user_id="u_mod", creator_username="mod")
+        )
+
+        _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
+        _configure_launch_prerequisites(service, room.room_id)
+        service.launch_game_from_room(
+            LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
+        )
+
+        participant_roles = {participant.role_name: participant.faction for participant in gameplay.commands[0].participants}
+        self.assertIn("Chief of Police", participant_roles)
+        self.assertIn("Mob Boss", participant_roles)
+        self.assertIn("Knife Hobo", participant_roles)
+        self.assertIn("Merchant", participant_roles)
+
+    def test_launch_assigns_random_extra_merchant_role_for_larger_games(self) -> None:
+        repo = MemoryRoomsRepository()
+        gameplay = _StubGameplayInboundPort(game_id="game-r-merchants")
+        service = RoomsService(repo, gameplay_inbound_port=gameplay)
+        room = service.create_room(
+            CreateRoomCommand(name="Merchant Room", creator_user_id="u_mod", creator_username="mod")
+        )
+        for index in range(1, 11):
+            service.join_room(
+                JoinRoomCommand(
+                    room_id=room.room_id,
+                    user_id=f"u_{index}",
+                    username=f"p{index}",
+                )
+            )
+
+        _configure_launch_prerequisites(service, room.room_id)
+        service.launch_game_from_room(
+            LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
+        )
+
+        merchant_role_names = [
+            participant.role_name
+            for participant in gameplay.commands[0].participants
+            if participant.faction == "Merchant"
+        ]
+        self.assertIn("Merchant", merchant_role_names)
+        self.assertEqual(len(merchant_role_names), 2)
+        self.assertGreaterEqual(
+            len([role_name for role_name in merchant_role_names if role_name in {"Arms Dealer", "Smuggler", "Gun Runner", "Supplier"}]),
+            1,
+        )
+
+    @patch("project.mobboss_apps.rooms.src.room_service.RoomsService._random_role_seed", return_value=42)
+    def test_launch_assigns_roles_only_when_game_starts(self, _mock_random_seed) -> None:
         repo = MemoryRoomsRepository()
         gameplay = _StubGameplayInboundPort(game_id="game-r-pinned")
         service = RoomsService(repo, gameplay_inbound_port=gameplay)
@@ -546,25 +549,9 @@ class RoomMemoryServiceTests(unittest.TestCase):
 
         _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
         _configure_launch_prerequisites(service, room.room_id)
-        service.assign_room_role(
-            AssignRoomRoleCommand(
-                room_id=room.room_id,
-                moderator_user_id="u_mod",
-                target_user_id="u_3",
-                faction="Mob",
-                role_name="Kingpin",
-                rank=4,
-            )
-        )
-        service.assign_room_role(
-            AssignRoomRoleCommand(
-                room_id=room.room_id,
-                moderator_user_id="u_mod",
-                target_user_id="u_4",
-                faction="Police",
-                role_name="Detective",
-                rank=7,
-            )
+        before_launch = service.get_room_details(room.room_id)
+        self.assertTrue(
+            all(member.assigned_role is None for member in before_launch.members if member.user_id != "u_mod")
         )
 
         service.launch_game_from_room(
@@ -572,9 +559,8 @@ class RoomMemoryServiceTests(unittest.TestCase):
         )
 
         start_command = gameplay.commands[0]
-        participants_by_user_id = {participant.user_id: participant for participant in start_command.participants}
-        self.assertNotEqual(participants_by_user_id["u_3"].role_name, "Kingpin")
-        self.assertNotEqual(participants_by_user_id["u_4"].role_name, "Detective")
+        self.assertEqual(len(start_command.participants), 7)
+        self.assertTrue(all(participant.role_name for participant in start_command.participants))
 
     def test_launch_requires_secret_word_before_launch(self) -> None:
         _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
@@ -726,6 +712,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
             for m in before.members
             if m.membership_status == "joined" and m.assigned_role is not None
         }
+        self.assertEqual(before_map, {})
 
         after = self.service.shuffle_room_roles(
             ShuffleRoomRolesCommand(room_id=self.room_id, moderator_user_id="u_mod", seed=42)
@@ -736,7 +723,11 @@ class RoomMemoryServiceTests(unittest.TestCase):
             if m.membership_status == "joined" and m.assigned_role is not None
         }
 
-        self.assertEqual(sorted(before_map.values()), sorted(after_map.values()))
+        self.assertEqual(len(after_map), 7)
+        self.assertIn(("Police", "Chief of Police", 1), after_map.values())
+        self.assertIn(("Mob", "Mob Boss", 1), after_map.values())
+        self.assertIn(("Mob", "Knife Hobo", 10), after_map.values())
+        self.assertIn(("Merchant", "Merchant", 1), after_map.values())
         self.assertNotEqual(before_map, after_map)
 
     def test_list_active_rooms_prunes_orphan_room_missing_joined_moderator(self) -> None:

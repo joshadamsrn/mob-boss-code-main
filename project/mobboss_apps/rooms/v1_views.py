@@ -129,6 +129,8 @@ class AssignRoleView(BaseJsonView):
     def post(self, request: HttpRequest, room_id: str) -> JsonResponse:
         user_id = self._require_authenticated_user_id(request)
         container = get_container()
+        if not container.room_dev_mode:
+            raise ValueError("Role assignment is only available in dev mode.")
         rooms_inbound = container.rooms_inbound_port
         payload = self._load_json_body(request)
         payload["room_id"] = room_id

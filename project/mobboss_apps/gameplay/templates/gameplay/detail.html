@@ -1398,8 +1398,8 @@
       });
       if (snapshot.status === "ended" && snapshot.winning_faction) {
         const winnerMessage = initialGameResultNotice || (
-          snapshot.winning_faction === "Merchant" && snapshot.winning_user_id
-            ? `Winner: ${snapshot.winning_user_id} (Merchant).`
+          snapshot.winning_faction === "Merchant" && snapshot.winning_username
+            ? `Winner: ${snapshot.winning_username} (Merchant).`
             : `Winner: ${snapshot.winning_faction}.`
         );
         markNotificationSeen(`ended:${winnerMessage}`, winnerMessage);
@@ -1544,8 +1544,8 @@
       }
       if (snapshot && snapshot.status === "ended" && snapshot.winning_faction) {
         const winnerMessage = initialGameResultNotice || (
-          snapshot.winning_faction === "Merchant" && snapshot.winning_user_id
-            ? `Winner: ${snapshot.winning_user_id} (Merchant).`
+          snapshot.winning_faction === "Merchant" && snapshot.winning_username
+            ? `Winner: ${snapshot.winning_username} (Merchant).`
             : `Winner: ${snapshot.winning_faction}.`
         );
         const gameKey = `ended:${winnerMessage}`;
