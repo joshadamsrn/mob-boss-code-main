@@ -116,6 +116,14 @@ class GameplayHtmlContextTests(SimpleTestCase):
             template_source,
         )
 
+    def test_detail_template_labels_pending_trial_users_with_usernames(self) -> None:
+        template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
+        template_source = template_path.read_text()
+
+        self.assertIn('const usernameById = new Map(', template_source)
+        self.assertIn('Murdered: ${escapeHtml(displayNameForUserId(trial.murdered_user_id))}', template_source)
+        self.assertIn('? displayNameForUserId(trial.accused_selection_cursor[0], "")', template_source)
+
     def test_detail_template_marks_overlay_notification_seen_on_dismiss_not_on_show(self) -> None:
         template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
         template_source = template_path.read_text()

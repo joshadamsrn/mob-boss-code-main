@@ -1974,11 +1974,20 @@
       if (!trial) {
         pendingTrialPanel.innerHTML = '<div class="small text-secondary">No pending trial right now.</div>';
       } else {
+        const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
+        const usernameById = new Map(
+          participants.map((participant) => [String(participant && participant.user_id ? participant.user_id : ""), String(participant && participant.username ? participant.username : "").trim()])
+        );
+        const displayNameForUserId = (userId, unknownLabel = "Unknown Player") => {
+          const normalizedUserId = String(userId || "");
+          const username = usernameById.get(normalizedUserId);
+          return username && username.length > 0 ? username : unknownLabel;
+        };
         const currentResponder = trial.accused_selection_cursor && trial.accused_selection_cursor.length > 0
-          ? trial.accused_selection_cursor[0]
+          ? displayNameForUserId(trial.accused_selection_cursor[0], "")
           : "none";
         pendingTrialPanel.innerHTML = `
-          <div class="small text-secondary">Murdered: ${escapeHtml(trial.murdered_user_id || "unknown")}</div>
+          <div class="small text-secondary">Murdered: ${escapeHtml(displayNameForUserId(trial.murdered_user_id))}</div>
           <div class="small text-secondary">Current responder: ${escapeHtml(currentResponder)}</div>
         `;
       }
