@@ -14,7 +14,7 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
     RoomDetailsSnapshot,
     RoomMemberSnapshot,
 )
-from project.mobboss_apps.rooms.views import add_dev_seat, remove_dev_seat  # noqa: E402
+from project.mobboss_apps.rooms.views import add_dev_seat, mark_all_ready, remove_dev_seat  # noqa: E402
 
 
 def _room_snapshot(*, moderator_user_id: str = "u_mod") -> RoomDetailsSnapshot:
@@ -51,6 +51,7 @@ class _StubRoomsInboundPort:
         self._room = room
         self.join_commands = []
         self.leave_commands = []
+        self.ready_commands = []
 
     def get_room_details(self, room_id: str) -> RoomDetailsSnapshot:
         return self._room
@@ -61,6 +62,10 @@ class _StubRoomsInboundPort:
 
     def leave_room(self, command) -> RoomDetailsSnapshot:
         self.leave_commands.append(command)
+        return self._room
+
+    def set_room_readiness(self, command) -> RoomDetailsSnapshot:
+        self.ready_commands.append(command)
         return self._room
 
 
@@ -172,6 +177,53 @@ class RoomDevSeatEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(inbound.leave_commands), 1)
         self.assertEqual(inbound.leave_commands[0].user_id, "dev-seat-01")
+
+    @patch("project.mobboss_apps.rooms.views.messages.error")
+    @patch("project.mobboss_apps.rooms.views.messages.success")
+    def test_mark_all_ready_requires_moderator(self, _mock_success, _mock_error) -> None:
+        inbound = _StubRoomsInboundPort(_room_snapshot())
+        container = _StubContainer(room_dev_mode=True, rooms_inbound_port=inbound)
+        request = self.factory.post("/rooms/r-1/dev/mark-all-ready")
+        request.user = self.participant_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = mark_all_ready(request, room_id="r-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/rooms/r-1/")
+        self.assertEqual(len(inbound.ready_commands), 0)
+
+    @patch("project.mobboss_apps.rooms.views.messages.error")
+    @patch("project.mobboss_apps.rooms.views.messages.success")
+    def test_mark_all_ready_requires_dev_mode(self, _mock_success, _mock_error) -> None:
+        inbound = _StubRoomsInboundPort(_room_snapshot())
+        container = _StubContainer(room_dev_mode=False, rooms_inbound_port=inbound)
+        request = self.factory.post("/rooms/r-1/dev/mark-all-ready")
+        request.user = self.moderator_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = mark_all_ready(request, room_id="r-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/rooms/r-1/")
+        self.assertEqual(len(inbound.ready_commands), 0)
+
+    @patch("project.mobboss_apps.rooms.views.messages.error")
+    @patch("project.mobboss_apps.rooms.views.messages.success")
+    def test_mark_all_ready_marks_each_joined_non_moderator_member_ready(self, _mock_success, _mock_error) -> None:
+        inbound = _StubRoomsInboundPort(_room_snapshot())
+        container = _StubContainer(room_dev_mode=True, rooms_inbound_port=inbound)
+        request = self.factory.post("/rooms/r-1/dev/mark-all-ready")
+        request.user = self.moderator_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = mark_all_ready(request, room_id="r-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/rooms/r-1/")
+        self.assertEqual(len(inbound.ready_commands), 1)
+        self.assertEqual(inbound.ready_commands[0].user_id, "dev-seat-01")
+        self.assertTrue(inbound.ready_commands[0].is_ready)
 
 
 if __name__ == "__main__":

@@ -51,6 +51,35 @@ MERCHANT_GOAL_ADDITIONAL_PERCENT = 0.40
 NOTIFICATION_TTL_SECONDS = 120
 
 
+def _default_inventory_item_image_path(classification: str) -> str:
+    if classification == "gun_tier_1":
+        return "/static/items/defaults/default_gun_tier_1.jpg"
+    if classification == "gun_tier_2":
+        return "/static/items/defaults/default_gun_tier_2.jpg"
+    if classification == "gun_tier_3":
+        return "/static/items/defaults/default_gun_tier_3.jpg"
+    if classification == "knife":
+        return "/static/items/defaults/default_knife.jpg"
+    if classification == "bulletproof_vest":
+        return "/static/items/defaults/default_bulletproof_vest.png"
+    if classification == "escape_from_jail":
+        return "/static/items/defaults/default_escape_from_jail.jpg"
+    return ""
+
+
+def _normalized_inventory_item_image_path(*, classification: str, image_path: str) -> str:
+    normalized_image_path = image_path.strip()
+    fallback_path = _default_inventory_item_image_path(classification)
+    if not fallback_path:
+        return normalized_image_path
+    if not normalized_image_path:
+        return fallback_path
+    legacy_default_prefix = f"/static/items/defaults/default_{classification}."
+    if normalized_image_path.startswith(legacy_default_prefix):
+        return fallback_path
+    return normalized_image_path
+
+
 @problem_details
 def index(request: HttpRequest) -> JsonResponse:
     StatusIndexRequestDTO.from_payload({"method": request.method})
@@ -100,7 +129,10 @@ def _to_participant_dict(
                 "item_id": inventory_item.item_id,
                 "classification": inventory_item.classification,
                 "display_name": inventory_item.display_name,
-                "image_path": inventory_item.image_path,
+                "image_path": _normalized_inventory_item_image_path(
+                    classification=inventory_item.classification,
+                    image_path=inventory_item.image_path,
+                ),
                 "acquisition_value": inventory_item.acquisition_value,
                 "resale_price": inventory_item.resale_price,
             }
@@ -120,6 +152,27 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
     reveal_all_roles = snapshot.status == "ended"
     ghost_view_enabled = _viewer_has_ghost_view(snapshot, viewer_user_id)
     can_view_police_mob_kill_tracker = is_moderator or ghost_view_enabled
+    pending_trial = snapshot.pending_trial
+    jury_vote_open = (
+        pending_trial is not None
+        and snapshot.phase == "trial_voting"
+        and pending_trial.vote_deadline_epoch_seconds is not None
+    )
+    viewer_has_jury_vote = (
+        pending_trial is not None
+        and any(
+            vote.get("user_id") == viewer_user_id and str(vote.get("vote_slot", "jury")) == "jury"
+            for vote in pending_trial.votes
+        )
+    )
+    viewer_has_tamper_vote = (
+        pending_trial is not None
+        and any(
+            vote.get("user_id") == viewer_user_id and str(vote.get("vote_slot", "jury")) == "tamper"
+            for vote in pending_trial.votes
+        )
+    )
+    viewer_is_silenced = pending_trial is not None and viewer_user_id in pending_trial.silenced_user_ids
     for participant in snapshot.participants:
         include_role_details = is_moderator or ghost_view_enabled or reveal_all_roles or participant.user_id == viewer_user_id
         participants.append(
@@ -227,20 +280,43 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
             is_moderator=is_moderator,
             participant_name_by_id=participant_name_by_id,
         ),
+        "can_submit_accused_selection": (
+            snapshot.status == "in_progress"
+            and snapshot.phase == "accused_selection"
+            and pending_trial is not None
+            and bool(pending_trial.accused_selection_cursor)
+            and pending_trial.accused_selection_cursor[0] == viewer_user_id
+        ),
+        "can_submit_jury_vote": (
+            pending_trial is not None
+            and snapshot.status == "in_progress"
+            and snapshot.phase == "trial_voting"
+            and viewer_user_id in pending_trial.jury_user_ids
+            and jury_vote_open
+            and not viewer_has_jury_vote
+        ),
+        "can_submit_tamper_vote": (
+            pending_trial is not None
+            and snapshot.status == "in_progress"
+            and snapshot.phase == "trial_voting"
+            and pending_trial.gangster_tamper_actor_user_id == viewer_user_id
+            and pending_trial.gangster_tamper_target_user_id is not None
+            and not viewer_has_tamper_vote
+        ),
     }
-    if is_moderator and snapshot.pending_trial is not None:
+    if is_moderator and pending_trial is not None:
         payload["pending_trial"] = {
-            "murdered_user_id": snapshot.pending_trial.murdered_user_id,
-            "murderer_user_id": snapshot.pending_trial.murderer_user_id,
-            "accused_user_id": snapshot.pending_trial.accused_user_id,
-            "accused_selection_cursor": list(snapshot.pending_trial.accused_selection_cursor),
-            "accused_selection_deadline_epoch_seconds": snapshot.pending_trial.accused_selection_deadline_epoch_seconds,
-            "jury_user_ids": list(snapshot.pending_trial.jury_user_ids),
-            "vote_deadline_epoch_seconds": snapshot.pending_trial.vote_deadline_epoch_seconds,
-            "votes": list(snapshot.pending_trial.votes),
-            "verdict": snapshot.pending_trial.verdict,
-            "conviction_correct": snapshot.pending_trial.conviction_correct,
-            "resolution": snapshot.pending_trial.resolution,
+            "murdered_user_id": pending_trial.murdered_user_id,
+            "murderer_user_id": pending_trial.murderer_user_id,
+            "accused_user_id": pending_trial.accused_user_id,
+            "accused_selection_cursor": list(pending_trial.accused_selection_cursor),
+            "accused_selection_deadline_epoch_seconds": pending_trial.accused_selection_deadline_epoch_seconds,
+            "jury_user_ids": list(pending_trial.jury_user_ids),
+            "vote_deadline_epoch_seconds": pending_trial.vote_deadline_epoch_seconds,
+            "votes": list(pending_trial.votes),
+            "verdict": pending_trial.verdict,
+            "conviction_correct": pending_trial.conviction_correct,
+            "resolution": pending_trial.resolution,
         }
     return payload
 

@@ -191,6 +191,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(len(arms_dealer.inventory), 1)
         self.assertEqual(arms_dealer.inventory[0].classification, "gun_tier_1")
         self.assertEqual(arms_dealer.inventory[0].acquisition_value, 150)
+        self.assertEqual(arms_dealer.inventory[0].image_path, "/static/items/defaults/default_gun_tier_1.jpg")
         self.assertFalse(gun_catalog_item.is_active)
         self.assertTrue(
             any(
@@ -201,7 +202,19 @@ class GameplayServiceTests(unittest.TestCase):
         )
 
     def test_report_death_moves_session_to_accused_selection_when_police_alive(self) -> None:
-        started = self.service.start_session_from_room(_build_start_session_command("start_session_police_alive.json"))
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-accused-selection",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=222,
+                participants=[
+                    StartSessionParticipantInput("u_police", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
+                ],
+                catalog=[],
+            )
+        )
 
         updated = self.service.report_death(
             ReportDeathCommand(
@@ -245,6 +258,136 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.ended_at_epoch_seconds, 1000)
         self.assertEqual(self.room_lifecycle.calls, [("r-2", started.game_id)])
 
+    def test_report_death_ends_game_immediately_when_last_mob_is_killed(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-last-mob",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                ],
+                catalog=[],
+            )
+        )
+
+        updated = self.service.report_death(
+            ReportDeathCommand(
+                game_id=started.game_id,
+                murdered_user_id="u_mob",
+                reported_by_user_id="u_mod",
+                murderer_user_id="u_chief",
+                attack_classification="knife",
+                expected_version=started.version,
+            )
+        )
+
+        self.assertEqual(updated.status, "ended")
+        self.assertEqual(updated.phase, "ended")
+        self.assertEqual(updated.winning_faction, "Police")
+        self.assertIsNone(updated.pending_trial)
+        self.assertEqual(updated.winning_user_id, None)
+
+    def test_report_death_notifies_new_acting_chief_before_accused_selection(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-acting-chief",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_deputy", "deputy", "Police", "Deputy", 2, 250),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
+                ],
+                catalog=[],
+            )
+        )
+
+        updated = self.service.report_death(
+            ReportDeathCommand(
+                game_id=started.game_id,
+                murdered_user_id="u_chief",
+                murderer_user_id="u_mob",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                expected_version=started.version,
+            )
+        )
+
+        self.assertEqual(updated.phase, "accused_selection")
+        self.assertEqual(updated.pending_trial.accused_selection_cursor, ["u_deputy"])
+        self.assertTrue(
+            any(
+                event.user_id == "u_deputy" and event.message == "You are now the Acting Chief of Police."
+                for event in updated.notification_feed
+            )
+        )
+
+    def test_guilty_verdict_notifies_new_acting_mob_boss(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-acting-mob",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_detective", "detective", "Police", "Detective", 2, 180),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
+                ],
+                catalog=[],
+            )
+        )
+        after_report = self.service.report_death(
+            ReportDeathCommand(
+                game_id=started.game_id,
+                murdered_user_id="u_detective",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                expected_version=started.version,
+            )
+        )
+        after_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
+                game_id=after_report.game_id,
+                selected_by_user_id="u_chief",
+                accused_user_id="u_mob",
+                expected_version=after_report.version,
+            )
+        )
+        after_start_voting = self.service.allow_trial_voting(
+            AllowTrialVotingCommand(
+                game_id=after_selection.game_id,
+                requested_by_user_id="u_mod",
+                expected_version=after_selection.version,
+            )
+        )
+        after_first_vote = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_start_voting.game_id,
+                voter_user_id=after_start_voting.pending_trial.jury_user_ids[0],
+                vote="guilty",
+                expected_version=after_start_voting.version,
+            )
+        )
+        resolved = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_first_vote.game_id,
+                voter_user_id=after_start_voting.pending_trial.jury_user_ids[1],
+                vote="guilty",
+                expected_version=after_first_vote.version,
+            )
+        )
+
+        self.assertTrue(
+            any(
+                event.user_id == "u_gang" and event.message == "You are now the Acting Mob Boss."
+                for event in resolved.notification_feed
+            )
+        )
+
     def test_report_death_without_alive_police_ends_game_when_mob_controls_remaining_players(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_no_police.json"))
 
@@ -261,9 +404,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(updated.phase, "ended")
         self.assertEqual(updated.status, "ended")
         self.assertEqual(updated.winning_faction, "Mob")
-        self.assertIsNotNone(updated.pending_trial)
-        self.assertEqual(updated.pending_trial.accused_selection_cursor, [])
-        self.assertEqual(updated.pending_trial.resolution, "no_conviction")
+        self.assertIsNone(updated.pending_trial)
 
     def test_report_death_rejects_stale_expected_version(self) -> None:
         started = self.service.start_session_from_room(_build_start_session_command("start_session_police_alive.json"))
@@ -406,7 +547,7 @@ class GameplayServiceTests(unittest.TestCase):
                 )
             )
 
-    def test_gunshot_vest_block_consumes_vest_routes_value_to_attacker_and_skips_trial(self) -> None:
+    def test_gunshot_vest_block_consumes_vest_routes_value_to_attacker_and_starts_trial(self) -> None:
         started = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
                 room_id="r-vest-block",
@@ -500,14 +641,19 @@ class GameplayServiceTests(unittest.TestCase):
 
         target = next(participant for participant in updated.participants if participant.user_id == "u_target")
         attacker = next(participant for participant in updated.participants if participant.user_id == "u_attacker")
-        self.assertEqual(updated.phase, "information")
-        self.assertIsNone(updated.pending_trial)
+        self.assertEqual(updated.phase, "accused_selection")
+        self.assertIsNotNone(updated.pending_trial)
+        self.assertEqual(updated.pending_trial.accused_selection_cursor, ["u_mod"])
         self.assertEqual(target.life_state, "alive")
         self.assertEqual(len(target.inventory), 0)
         self.assertEqual(target.money_balance, 250)
         self.assertEqual(attacker.money_balance, 350)
-        self.assertEqual(updated.latest_public_notice, "TARGET SURVIVED A HANDGUN (TIER 1) SHOT USING A BULLETPROOF VEST")
-        self.assertNotIn("attacker", updated.latest_public_notice.lower())
+        self.assertEqual(updated.latest_public_notice, "ATTEMPTED MURDER ON TARGET WITH HANDGUN (TIER 1) - REPORT IMMEDIATELY TO COURT HOUSE")
+        self.assertEqual(updated.latest_private_notice_user_id, "u_target")
+        self.assertEqual(
+            updated.latest_private_notice_message,
+            "The murder attempt failed because your bulletproof vest stopped the shot.",
+        )
         self.assertEqual(len(updated.ledger.entries), 2)
         self.assertEqual(updated.ledger.entries[-1].entry_kind, "vest_block_transfer")
         self.assertEqual(updated.ledger.entries[-1].amount, 50)
@@ -624,7 +770,7 @@ class GameplayServiceTests(unittest.TestCase):
                     StartSessionParticipantInput("u_mod", "moderator", "Police", "Chief of Police", 1, 300),
                     StartSessionParticipantInput("u_cop", "cop", "Police", "Cop", 9, 300),
                     StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
-                    StartSessionParticipantInput("u_merchant", "merchant", "Merchant", "Merchant", 1, 300),
+                    StartSessionParticipantInput("u_merchant", "merchant", "Merchant", "Merchant", 1, 100),
                 ],
                 catalog=[
                     StartSessionCatalogItemInput(
@@ -738,6 +884,90 @@ class GameplayServiceTests(unittest.TestCase):
         vest_items = [item for item in cop.inventory if item.classification == "bulletproof_vest"]
         self.assertTrue(cop.power_state.cop_last_three_protection_used)
         self.assertEqual(len(vest_items), 1)
+
+    def test_vest_blocked_attempted_murder_starts_accused_selection_for_acting_chief(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-vest-attempted-murder",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=100,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_cop", "cop", "Police", "Cop", 9, 300),
+                    StartSessionParticipantInput("u_officer", "officer", "Police", "Police Officer", 9, 300),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                ],
+                catalog=[
+                    StartSessionCatalogItemInput(
+                        classification="bulletproof_vest",
+                        display_name="Bulletproof Vest",
+                        base_price=50,
+                        image_path="/static/items/defaults/default_bulletproof_vest.svg",
+                        is_active=True,
+                    ),
+                    StartSessionCatalogItemInput(
+                        classification="gun_tier_1",
+                        display_name="Handgun (Tier 1)",
+                        base_price=150,
+                        image_path="/static/items/defaults/default_gun_tier_1.svg",
+                        is_active=True,
+                    ),
+                ],
+            )
+        )
+        prepared = replace(
+            started,
+            participants=[
+                replace(participant, life_state="dead")
+                if participant.user_id == "u_chief"
+                else replace(
+                    participant,
+                    inventory=[
+                        InventoryItemStateSnapshot(
+                            item_id="vest-cop",
+                            classification="bulletproof_vest",
+                            display_name="Bulletproof Vest",
+                            image_path="/static/items/defaults/default_bulletproof_vest.svg",
+                            acquisition_value=50,
+                            resale_price=0,
+                        )
+                    ],
+                )
+                if participant.user_id == "u_cop"
+                else participant
+                for participant in started.participants
+            ],
+            current_police_leader_user_id="u_officer",
+            version=started.version + 1,
+        )
+        self.repository.save_game_session(prepared)
+        updated = self.service.report_death(
+            ReportDeathCommand(
+                game_id=prepared.game_id,
+                murdered_user_id="u_cop",
+                reported_by_user_id="u_mod",
+                murderer_user_id="u_mob",
+                attack_classification="gun_tier_1",
+                expected_version=prepared.version,
+            )
+        )
+
+        cop = next(participant for participant in updated.participants if participant.user_id == "u_cop")
+        officer = next(participant for participant in updated.participants if participant.user_id == "u_officer")
+        self.assertEqual(updated.phase, "accused_selection")
+        self.assertIsNotNone(updated.pending_trial)
+        self.assertEqual(updated.pending_trial.accused_selection_cursor, ["u_officer"])
+        self.assertEqual(
+            updated.latest_public_notice,
+            "ATTEMPTED MURDER ON COP WITH HANDGUN (TIER 1) - REPORT IMMEDIATELY TO COURT HOUSE",
+        )
+        self.assertEqual(updated.latest_private_notice_user_id, "u_cop")
+        self.assertEqual(
+            updated.latest_private_notice_message,
+            "The murder attempt failed because your bulletproof vest stopped the shot.",
+        )
+        self.assertEqual(cop.life_state, "alive")
+        self.assertEqual(officer.life_state, "alive")
 
     def test_cop_last_three_protection_triggers_when_guilty_verdict_reduces_alive_count_to_three(self) -> None:
         started = self.service.start_session_from_room(
@@ -1778,7 +2008,20 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertTrue(any(event.user_id == "u_felon" and "escaped from jail" in event.message for event in updated.notification_feed))
 
     def test_accused_selection_has_no_timeout_deadline(self) -> None:
-        started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-accused-deadline",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=444,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_deputy", "deputy", "Police", "Deputy", 2, 250),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
+                ],
+                catalog=[],
+            )
+        )
         after_report = self.service.report_death(
             ReportDeathCommand(
                 game_id=started.game_id,
@@ -1794,7 +2037,20 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertIsNone(after_report.pending_trial.accused_selection_deadline_epoch_seconds)
 
     def test_submit_accused_selection_notifies_accused_player_of_trial(self) -> None:
-        started = self.service.start_session_from_room(_build_start_session_command("start_session_two_police.json"))
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-accused-notice",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=444,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_deputy", "deputy", "Police", "Deputy", 2, 250),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
+                ],
+                catalog=[],
+            )
+        )
         after_report = self.service.report_death(
             ReportDeathCommand(
                 game_id=started.game_id,
@@ -1858,38 +2114,9 @@ class GameplayServiceTests(unittest.TestCase):
 
         self.assertEqual(after_report.total_mob_participants_at_start, 1)
         self.assertEqual(after_report.police_mob_kills_count, 1)
-
-        after_selection = self.service.submit_accused_selection(
-            SubmitAccusedSelectionCommand(
-                game_id=after_report.game_id,
-                selected_by_user_id="u_chief",
-                accused_user_id="u_deputy",
-                expected_version=after_report.version,
-            )
-        )
-        after_start_voting = self.service.allow_trial_voting(
-            AllowTrialVotingCommand(
-                game_id=after_selection.game_id,
-                requested_by_user_id="u_mod",
-                expected_version=after_selection.version,
-            )
-        )
-        resolved = self.service.submit_trial_vote(
-            SubmitTrialVoteCommand(
-                game_id=after_start_voting.game_id,
-                voter_user_id="u_chief",
-                vote="guilty",
-                expected_version=after_start_voting.version,
-            )
-        )
-
-        self.assertEqual(resolved.phase, "ended")
-        self.assertEqual(resolved.status, "ended")
-        self.assertEqual(resolved.winning_faction, "Mob")
-        self.assertEqual(
-            resolved.latest_public_notice,
-            "Mob wins. Police Department Shut Down Due to Police Brutality. Department Overrun by Mob.",
-        )
+        self.assertEqual(after_report.phase, "ended")
+        self.assertEqual(after_report.status, "ended")
+        self.assertEqual(after_report.winning_faction, "Police")
 
     def test_mob_on_mob_kill_does_not_consume_police_allowed_kills(self) -> None:
         started = self.service.start_session_from_room(
@@ -2136,6 +2363,9 @@ class GameplayServiceTests(unittest.TestCase):
                 expected_version=after_deputy_vote.version,
             )
         )
+        self.assertIsNotNone(after_tamper.pending_trial)
+        self.assertEqual(after_tamper.pending_trial.gangster_tamper_target_user_id, "u_mod")
+        self.assertIsNone(after_tamper.pending_trial.gangster_tamper_vote_deadline_epoch_seconds)
         after_gangster_jury_vote = self.service.submit_trial_vote(
             SubmitTrialVoteCommand(
                 game_id=after_tamper.game_id,
@@ -2158,6 +2388,67 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(resolved.phase, "information")
         self.assertIsNone(resolved.pending_trial)
         self.assertEqual(resolved.latest_public_notice, "mob was found not guilty.")
+
+    def test_tied_jury_returns_hung_jury_mistrial_notice(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-hung-jury",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_captain", "captain", "Police", "Captain", 4, 260),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_hobo", "hobo", "Mob", "Knife Hobo", 2, 180),
+                ],
+                catalog=[],
+            )
+        )
+        after_report = self.service.report_death(
+            ReportDeathCommand(
+                game_id=started.game_id,
+                murdered_user_id="u_chief",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                murderer_user_id="u_hobo",
+                expected_version=started.version,
+            )
+        )
+        after_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
+                game_id=after_report.game_id,
+                selected_by_user_id="u_captain",
+                accused_user_id="u_captain",
+                expected_version=after_report.version,
+            )
+        )
+        after_start_voting = self.service.allow_trial_voting(
+            AllowTrialVotingCommand(
+                game_id=after_selection.game_id,
+                requested_by_user_id="u_mod",
+                expected_version=after_selection.version,
+            )
+        )
+        first_vote = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_start_voting.game_id,
+                voter_user_id="u_mob",
+                vote="guilty",
+                expected_version=after_start_voting.version,
+            )
+        )
+        resolved = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=first_vote.game_id,
+                voter_user_id="u_hobo",
+                vote="innocent",
+                expected_version=first_vote.version,
+            )
+        )
+
+        self.assertEqual(resolved.phase, "information")
+        self.assertIsNone(resolved.pending_trial)
+        self.assertEqual(resolved.latest_public_notice, "Hung jury. captain was found not guilty due to mistrial.")
 
     def test_deputy_can_activate_protective_custody_once_during_information_phase(self) -> None:
         started = self.service.start_session_from_room(
@@ -2460,6 +2751,7 @@ class GameplayServiceTests(unittest.TestCase):
                     StartSessionParticipantInput("u_lieutenant", "lieutenant", "Police", "Lieutenant", 4, 250),
                     StartSessionParticipantInput("u_police", "police", "Police", "Chief of Police", 1, 300),
                     StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                    StartSessionParticipantInput("u_gang", "gang", "Mob", "Gangster", 3, 120),
                     StartSessionParticipantInput("u_merchant", "merchant", "Merchant", "Merchant", 1, 250),
                 ],
                 catalog=[],
@@ -2485,7 +2777,7 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertTrue(lieutenant.power_state.lieutenant_information_briefcase_used)
         self.assertEqual(lieutenant.power_state.lieutenant_briefcase_visible_until_epoch_seconds, 1060)
         self.assertEqual(lieutenant.power_state.lieutenant_briefcase_alive_police_count, 2)
-        self.assertEqual(lieutenant.power_state.lieutenant_briefcase_alive_mob_count, 0)
+        self.assertEqual(lieutenant.power_state.lieutenant_briefcase_alive_mob_count, 1)
         self.assertEqual(lieutenant.power_state.lieutenant_briefcase_alive_merchant_count, 1)
 
         with self.assertRaises(ConflictProblem):
@@ -3080,6 +3372,89 @@ class GameplayServiceTests(unittest.TestCase):
         self.assertEqual(chief.inventory[0].classification, "knife")
         self.assertTrue(any("no longer active" in event.message for event in resolved.notification_feed if event.user_id == "u_mod"))
 
+    def test_police_officer_confiscation_triggers_when_merchant_is_found_guilty(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-confiscation-merchant",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput("u_chief", "chief", "Police", "Chief of Police", 1, 300),
+                    StartSessionParticipantInput("u_deputy", "deputy", "Police", "Deputy", 2, 250),
+                    StartSessionParticipantInput("u_officer", "officer", "Police", "Police Officer", 6, 200),
+                    StartSessionParticipantInput("u_merchant", "merchant", "Merchant", "Merchant", 1, 450),
+                    StartSessionParticipantInput("u_hobo", "hobo", "Mob", "Knife Hobo", 2, 180),
+                    StartSessionParticipantInput("u_mob", "mob", "Mob", "Mob Boss", 1, 300),
+                ],
+                catalog=[
+                    StartSessionCatalogItemInput(
+                        classification="knife",
+                        display_name="Knife",
+                        base_price=100,
+                        image_path="/static/items/defaults/default_knife.svg",
+                        is_active=True,
+                    )
+                ],
+            )
+        )
+        armed = self.service.activate_police_officer_confiscation(
+            ActivatePoliceOfficerConfiscationCommand(
+                game_id=started.game_id,
+                actor_user_id="u_officer",
+                expected_version=started.version,
+            )
+        )
+        after_report = self.service.report_death(
+            ReportDeathCommand(
+                game_id=armed.game_id,
+                murdered_user_id="u_deputy",
+                reported_by_user_id="u_mod",
+                attack_classification="knife",
+                murderer_user_id="u_hobo",
+                expected_version=armed.version,
+            )
+        )
+        after_selection = self.service.submit_accused_selection(
+            SubmitAccusedSelectionCommand(
+                game_id=after_report.game_id,
+                selected_by_user_id="u_chief",
+                accused_user_id="u_merchant",
+                expected_version=after_report.version,
+            )
+        )
+        after_start_voting = self.service.allow_trial_voting(
+            AllowTrialVotingCommand(
+                game_id=after_selection.game_id,
+                requested_by_user_id="u_mod",
+                expected_version=after_selection.version,
+            )
+        )
+        resolved = after_start_voting
+        for juror_user_id in after_start_voting.pending_trial.jury_user_ids:
+            resolved = self.service.submit_trial_vote(
+                SubmitTrialVoteCommand(
+                    game_id=resolved.game_id,
+                    voter_user_id=juror_user_id,
+                    vote="guilty",
+                    expected_version=resolved.version,
+                )
+            )
+
+        officer = next(participant for participant in resolved.participants if participant.user_id == "u_officer")
+        chief = next(participant for participant in resolved.participants if participant.user_id == "u_chief")
+        merchant = next(participant for participant in resolved.participants if participant.user_id == "u_merchant")
+        mob_boss = next(participant for participant in resolved.participants if participant.user_id == "u_mob")
+
+        self.assertEqual(merchant.life_state, "jailed")
+        self.assertEqual(merchant.money_balance, 0)
+        self.assertEqual(merchant.inventory, [])
+        self.assertTrue(officer.power_state.police_officer_confiscation_used)
+        self.assertFalse(officer.power_state.police_officer_confiscation_pending)
+        self.assertGreater(officer.money_balance, 200)
+        self.assertGreater(chief.money_balance, 300)
+        self.assertEqual(mob_boss.money_balance, 300)
+        self.assertTrue(any("confiscated" in event.message.lower() for event in resolved.notification_feed if event.user_id == "u_officer"))
+
     def test_police_officer_confiscation_is_consumed_when_efj_triggers(self) -> None:
         started = self.service.start_session_from_room(
             StartSessionFromRoomCommand(
@@ -3389,17 +3764,20 @@ class GameplayServiceTests(unittest.TestCase):
             )
         )
         self.assertIsNotNone(after_start_voting.pending_trial)
-
-        with self.assertRaises(ConflictProblem) as exc_ctx:
-            self.service.submit_trial_vote(
-                SubmitTrialVoteCommand(
-                    game_id=after_start_voting.game_id,
-                    voter_user_id="u_deputy",
-                    vote="guilty",
-                    expected_version=after_start_voting.version,
-                )
+        after_vote = self.service.submit_trial_vote(
+            SubmitTrialVoteCommand(
+                game_id=after_start_voting.game_id,
+                voter_user_id="u_deputy",
+                vote="guilty",
+                expected_version=after_start_voting.version,
             )
-        self.assertEqual(str(exc_ctx.exception), "You are silenced and cannot vote during this trial.")
+        )
+        self.assertTrue(
+            any(
+                vote.get("user_id") == "u_deputy" and vote.get("vote") == "guilty"
+                for vote in after_vote.pending_trial.votes
+            )
+        )
 
     def test_underboss_can_replace_juror_once(self) -> None:
         started = self.service.start_session_from_room(

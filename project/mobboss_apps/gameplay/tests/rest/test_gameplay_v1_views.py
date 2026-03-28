@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     GameDetailsSnapshot,
+    InventoryItemStateSnapshot,
     NotificationEventSnapshot,
     ParticipantStateSnapshot,
     TrialStateSnapshot,
@@ -253,6 +254,155 @@ class GameplayV1ViewTests(SimpleTestCase):
         self.assertIsNone(payload["police_mob_kills_count"])
         self.assertIsNone(payload["police_mob_kills_allowed"])
         self.assertIsNone(payload["police_brutality_exceeded"])
+        self.assertFalse(payload["can_submit_accused_selection"])
+        self.assertFalse(payload["can_submit_jury_vote"])
+        self.assertFalse(payload["can_submit_tamper_vote"])
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_game_detail_normalizes_legacy_inventory_default_image_paths(self, mock_get_container) -> None:
+        self.snapshot = GameDetailsSnapshot(
+            game_id=self.snapshot.game_id,
+            room_id=self.snapshot.room_id,
+            moderator_user_id=self.snapshot.moderator_user_id,
+            status=self.snapshot.status,
+            phase=self.snapshot.phase,
+            round_number=self.snapshot.round_number,
+            version=self.snapshot.version,
+            launched_at_epoch_seconds=self.snapshot.launched_at_epoch_seconds,
+            ended_at_epoch_seconds=self.snapshot.ended_at_epoch_seconds,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_p1",
+                    username="p1",
+                    faction="Merchant",
+                    role_name="Arms Dealer",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                    inventory=[
+                        InventoryItemStateSnapshot(
+                            item_id="inv-1",
+                            classification="gun_tier_1",
+                            display_name="Handgun (Tier 1)",
+                            image_path="/static/items/defaults/default_gun_tier_1.svg",
+                            acquisition_value=150,
+                            resale_price=150,
+                        )
+                    ],
+                ),
+                self.snapshot.participants[1],
+            ],
+            catalog=self.snapshot.catalog,
+            pending_trial=self.snapshot.pending_trial,
+        )
+        self.gameplay.snapshot = self.snapshot
+        mock_get_container.return_value = self.container
+        request = self.factory.get("/gameplay/v1/games/g-1")
+        request.user = self.player
+
+        response = GameDetailView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertEqual(
+            payload["participants"][0]["inventory"][0]["image_path"],
+            "/static/items/defaults/default_gun_tier_1.jpg",
+        )
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_game_detail_player_payload_includes_accused_selection_eligibility(self, mock_get_container) -> None:
+        self.snapshot = GameDetailsSnapshot(
+            game_id=self.snapshot.game_id,
+            room_id=self.snapshot.room_id,
+            moderator_user_id=self.snapshot.moderator_user_id,
+            status="in_progress",
+            phase="accused_selection",
+            round_number=self.snapshot.round_number,
+            version=self.snapshot.version + 1,
+            launched_at_epoch_seconds=self.snapshot.launched_at_epoch_seconds,
+            ended_at_epoch_seconds=self.snapshot.ended_at_epoch_seconds,
+            participants=self.snapshot.participants,
+            catalog=self.snapshot.catalog,
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_p2",
+                murderer_user_id="u_x",
+                accused_user_id=None,
+                accused_selection_cursor=["u_p1"],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=[],
+                vote_deadline_epoch_seconds=None,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+            ),
+            notification_feed=[
+                NotificationEventSnapshot(
+                    event_id="event-acting-chief",
+                    user_id="u_p1",
+                    message="You are now the Acting Chief of Police.",
+                    created_at_epoch_seconds=100,
+                ),
+                NotificationEventSnapshot(
+                    event_id="event-murder",
+                    user_id="u_p1",
+                    message="A murder was reported. Report to the court house immediately.",
+                    created_at_epoch_seconds=101,
+                ),
+            ],
+        )
+        self.gameplay.snapshot = self.snapshot
+        mock_get_container.return_value = self.container
+        request = self.factory.get("/gameplay/v1/games/g-1")
+        request.user = self.player
+
+        response = GameDetailView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertTrue(payload["can_submit_accused_selection"])
+        self.assertFalse(payload["can_submit_jury_vote"])
+        self.assertFalse(payload["can_submit_tamper_vote"])
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_game_detail_player_payload_allows_silenced_juror_to_vote(self, mock_get_container) -> None:
+        self.snapshot = GameDetailsSnapshot(
+            game_id=self.snapshot.game_id,
+            room_id=self.snapshot.room_id,
+            moderator_user_id=self.snapshot.moderator_user_id,
+            status="in_progress",
+            phase="trial_voting",
+            round_number=self.snapshot.round_number,
+            version=self.snapshot.version + 1,
+            launched_at_epoch_seconds=self.snapshot.launched_at_epoch_seconds,
+            ended_at_epoch_seconds=self.snapshot.ended_at_epoch_seconds,
+            participants=self.snapshot.participants,
+            catalog=self.snapshot.catalog,
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_p2",
+                murderer_user_id="u_x",
+                accused_user_id="u_p2",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_p1"],
+                vote_deadline_epoch_seconds=1234,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+                silenced_user_ids=["u_p1"],
+            ),
+        )
+        self.gameplay.snapshot = self.snapshot
+        mock_get_container.return_value = self.container
+        request = self.factory.get("/gameplay/v1/games/g-1")
+        request.user = self.player
+
+        response = GameDetailView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertTrue(payload["can_submit_jury_vote"])
 
     @patch("project.mobboss_apps.gameplay.v1_views.time.time", return_value=1000)
     @patch("project.mobboss_apps.gameplay.v1_views.get_container")

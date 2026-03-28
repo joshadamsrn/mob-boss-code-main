@@ -29,9 +29,29 @@ from project.mobboss_apps.rooms.ports.internal_requests_dto import (
     ShuffleRolesPageRequestDTO,
     UpsertRoomItemRequestDTO,
 )
-from project.mobboss_apps.rooms.src.room_service import minimum_launch_starting_balance
+from project.mobboss_apps.rooms.src.room_service import (
+    MERCHANT_ROLE_TITLES,
+    MOB_ROLE_TITLES,
+    POLICE_ROLE_TITLES,
+    minimum_launch_starting_balance,
+)
 
 DEV_SEAT_USER_ID_PREFIX = "dev-seat-"
+_ROLE_ASSIGNMENT_BY_TITLE = {
+    **{
+        title: {"faction": "Police", "role_name": title, "rank": idx + 1}
+        for idx, title in enumerate(POLICE_ROLE_TITLES)
+    },
+    **{
+        title: {"faction": "Mob", "role_name": title, "rank": idx + 1}
+        for idx, title in enumerate(MOB_ROLE_TITLES)
+    },
+    **{
+        title: {"faction": "Merchant", "role_name": title, "rank": 1}
+        for title in MERCHANT_ROLE_TITLES
+    },
+}
+_ROLE_ASSIGNMENT_CHOICES = list(_ROLE_ASSIGNMENT_BY_TITLE.values())
 
 
 def _current_user_id(request: HttpRequest) -> str:
@@ -61,6 +81,22 @@ def _build_dev_seat_user_id(number: int) -> str:
 def _parse_bool_flag(raw_value: object) -> bool:
     value = str(raw_value if raw_value is not None else "").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _resolve_role_assignment_payload(request: HttpRequest) -> dict[str, str]:
+    role_name = str(request.POST.get("role_name", "")).strip()
+    faction = str(request.POST.get("faction", "")).strip()
+    rank = str(request.POST.get("rank", "")).strip()
+    if role_name and faction and rank:
+        return {"role_name": role_name, "faction": faction, "rank": rank}
+    assignment = _ROLE_ASSIGNMENT_BY_TITLE.get(role_name)
+    if assignment is None:
+        return {"role_name": role_name, "faction": faction, "rank": rank}
+    return {
+        "role_name": assignment["role_name"],
+        "faction": assignment["faction"],
+        "rank": str(assignment["rank"]),
+    }
 
 
 def _room_detail_url(room_id: str, as_user_id: str = "", simulate_actions: bool = False) -> str:
@@ -190,7 +226,18 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
         has_min_players = player_count >= launch_min_players
         under_capacity = player_count <= 25
         all_joined_ready = all(member.is_ready for member in player_members)
-        can_launch = actor_is_moderator and not is_view_as_mode and is_lobby and has_min_players and under_capacity and all_joined_ready
+        secret_word_ready = bool(str(room.secret_mob_word).strip())
+        central_supply_ready = any(item.is_active for item in room.items)
+        can_launch = (
+            actor_is_moderator
+            and not is_view_as_mode
+            and is_lobby
+            and has_min_players
+            and under_capacity
+            and all_joined_ready
+            and secret_word_ready
+            and central_supply_ready
+        )
         dev_launch_override_active = container.room_dev_mode and launch_min_players != 7
         room_state_poll_interval_seconds = container.room_state_poll_interval_seconds
         waitlist = []
@@ -270,12 +317,15 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 "has_min_players": has_min_players,
                 "under_capacity": under_capacity,
                 "all_joined_ready": all_joined_ready,
+                "secret_word_ready": secret_word_ready,
+                "central_supply_ready": central_supply_ready,
                 "can_launch": can_launch,
                 "dev_mode_enabled": dev_mode_enabled,
                 "can_manage_dev_seats": can_manage_dev_seats,
                 "dev_seat_user_ids": dev_seat_user_ids,
                 "dev_seat_members": dev_seat_members,
                 "view_tabs": view_tabs,
+                "role_assignment_choices": _ROLE_ASSIGNMENT_CHOICES,
                 "room_state_poll_interval_seconds": room_state_poll_interval_seconds,
             },
         )
@@ -372,6 +422,42 @@ def remove_dev_seat(request: HttpRequest, room_id: str) -> HttpResponse:
 
 
 @login_required(login_url="/auth/")
+def mark_all_ready(request: HttpRequest, room_id: str) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("rooms-detail", room_id=room_id)
+    try:
+        actor_user_id = _current_user_id(request)
+        container = get_container()
+        if not container.room_dev_mode:
+            raise PermissionError("Dev ready controls are disabled.")
+        rooms_inbound = container.rooms_inbound_port
+        room = rooms_inbound.get_room_details(room_id)
+        if room.moderator_user_id != actor_user_id:
+            raise PermissionError("Only moderator can mark all players ready.")
+        if room.status != "lobby":
+            raise ValueError("Ready controls can only be used in lobby.")
+
+        ready_count = 0
+        for member in room.members:
+            if member.user_id == room.moderator_user_id or member.membership_status != "joined" or member.is_ready:
+                continue
+            dto = SetRoomReadinessRequestDTO.from_payload(
+                {
+                    "room_id": room_id,
+                    "requested_by_user_id": actor_user_id,
+                    "user_id": member.user_id,
+                    "is_ready": "true",
+                }
+            )
+            rooms_inbound.set_room_readiness(dto.to_command())
+            ready_count += 1
+        messages.success(request, f"Marked {ready_count} player(s) ready.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return _redirect_to_room_detail_with_context(request, room_id=room_id)
+
+
+@login_required(login_url="/auth/")
 def set_ready(request: HttpRequest, room_id: str) -> HttpResponse:
     if request.method != "POST":
         return redirect("rooms-detail", room_id=room_id)
@@ -397,13 +483,14 @@ def assign_role(request: HttpRequest, room_id: str) -> HttpResponse:
     if request.method != "POST":
         return redirect("rooms-detail", room_id=room_id)
     try:
+        resolved_role = _resolve_role_assignment_payload(request)
         payload = {
             "room_id": room_id,
             "moderator_user_id": _current_user_id(request),
             "target_user_id": request.POST.get("target_user_id", ""),
-            "faction": request.POST.get("faction", ""),
-            "role_name": request.POST.get("role_name", ""),
-            "rank": request.POST.get("rank", "1"),
+            "faction": resolved_role["faction"],
+            "role_name": resolved_role["role_name"],
+            "rank": resolved_role["rank"] or "1",
         }
         dto = AssignRoomRoleRequestDTO.from_payload(payload)
         container = get_container()
@@ -412,7 +499,7 @@ def assign_role(request: HttpRequest, room_id: str) -> HttpResponse:
         messages.success(request, "Role assigned.")
     except Exception as exc:
         messages.error(request, str(exc))
-    return redirect("rooms-detail", room_id=room_id)
+    return _redirect_to_room_detail_with_context(request, room_id=room_id)
 
 
 @login_required(login_url="/auth/")

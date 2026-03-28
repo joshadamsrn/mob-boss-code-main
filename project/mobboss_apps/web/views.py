@@ -54,30 +54,35 @@ def options(request: HttpRequest) -> HttpResponse:
     active_room = _resolve_active_moderated_game_for_user(user_id)
     request_session = getattr(request, "session", None)
     active_game_id = str(request_session.get("active_game_id", "")).strip() if request_session is not None else ""
+    active_game_status = ""
     if not active_game_id and active_room is not None and active_room.launched_game_id:
         active_game_id = active_room.launched_game_id
     moderator_report_death_players = []
     can_report_death = False
-    if active_room is not None and active_room.launched_game_id:
+    if active_game_id:
         try:
             container = get_container()
             gameplay_inbound = container.gameplay_inbound_port
-            session = gameplay_inbound.get_game_details(active_room.launched_game_id)
-            moderator_report_death_players = sorted(
-                [
-                    participant
-                    for participant in session.participants
-                    if participant.life_state == "alive"
-                ],
-                key=lambda participant: participant.username.lower(),
-            )
-            can_report_death = (
-                session.status == "in_progress"
-                and session.pending_trial is None
-                and bool(moderator_report_death_players)
-            )
+            session = gameplay_inbound.get_game_details(active_game_id)
+            active_game_status = str(session.status or "").strip()
+            if active_room is not None and active_room.launched_game_id == active_game_id:
+                moderator_report_death_players = sorted(
+                    [
+                        participant
+                        for participant in session.participants
+                        if participant.life_state == "alive"
+                    ],
+                    key=lambda participant: participant.username.lower(),
+                )
+                can_report_death = (
+                    session.status == "in_progress"
+                    and session.pending_trial is None
+                    and bool(moderator_report_death_players)
+                )
         except Exception:
             pass
+    return_target_href = f"/games/{active_game_id}/" if active_game_id and active_game_status != "ended" else "/"
+    return_target_label = "Return to Game" if active_game_id and active_game_status != "ended" else "Return to Lobby"
     return render(
         request,
         "web/options.html",
@@ -87,6 +92,8 @@ def options(request: HttpRequest) -> HttpResponse:
             "can_kill_game": active_room is not None and bool(active_room.launched_game_id),
             "can_report_death": can_report_death,
             "moderator_report_death_players": moderator_report_death_players,
+            "return_target_href": return_target_href,
+            "return_target_label": return_target_label,
         },
     )
 

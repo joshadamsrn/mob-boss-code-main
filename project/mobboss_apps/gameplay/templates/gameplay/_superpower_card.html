@@ -373,45 +373,17 @@
                     >
                         <div class="fw-semibold mb-1">{{ superpower_panel.reveal_state.target_username }} Transaction History</div>
                         {% if superpower_panel.reveal_state.transaction_rows %}
-                            <div class="table-responsive detective-investigation-table-wrap">
-                                <table class="table table-sm align-middle mb-0 detective-investigation-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Time stamp</th>
-                                            <th scope="col">Sender</th>
-                                            <th scope="col">Recipient</th>
-                                            <th scope="col">Money Amount</th>
-                                            <th scope="col">Item Name</th>
-                                            <th scope="col">Transaction Type</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for transaction in superpower_panel.reveal_state.transaction_rows %}
-                                            <tr>
-                                                <td>{{ transaction.timestamp_text }}</td>
-                                                <td>{{ transaction.sender_username }}</td>
-                                                <td>{{ transaction.recipient_username }}</td>
-                                                <td>
-                                                    {% if transaction.money_amount %}
-                                                        ${{ transaction.money_amount }}
-                                                    {% else %}
-                                                        -
-                                                    {% endif %}
-                                                </td>
-                                                <td>{{ transaction.item_name|default:"-" }}</td>
-                                                <td>{{ transaction.transaction_type_label }}</td>
-                                            </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+                            <div class="detective-investigation-table-wrap">
+                                <div class="d-flex flex-column gap-2">
+                                    {% for transaction in superpower_panel.reveal_state.transaction_rows %}
+                                        <div class="detective-investigation-row">
+                                            {{ forloop.counter }}. {{ transaction.summary_text }}
+                                        </div>
+                                    {% endfor %}
+                                </div>
                             </div>
                         {% else %}
-                            <div class="small mb-0">No player-to-player transactions found for {{ superpower_panel.reveal_state.target_username }}.</div>
-                        {% endif %}
-                        {% if superpower_panel.reveal_state.has_fewer_than_three %}
-                            <div class="small mt-2">
-                                {{ superpower_panel.reveal_state.target_username }} has only had {{ superpower_panel.reveal_state.total_transactions }} total transactions.
-                            </div>
+                            <div class="small mb-0">{{ superpower_panel.reveal_state.target_username }} has not had any transactions.</div>
                         {% endif %}
                     </div>
                 {% endif %}

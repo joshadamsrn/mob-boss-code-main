@@ -15,6 +15,19 @@
                                         width="32"
                                         height="32"
                                         loading="lazy"
+                                        {% if inventory_item.classification == "gun_tier_1" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_gun_tier_1.jpg';"
+                                        {% elif inventory_item.classification == "gun_tier_2" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_gun_tier_2.jpg';"
+                                        {% elif inventory_item.classification == "gun_tier_3" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_gun_tier_3.jpg';"
+                                        {% elif inventory_item.classification == "knife" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_knife.jpg';"
+                                        {% elif inventory_item.classification == "bulletproof_vest" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_bulletproof_vest.png';"
+                                        {% elif inventory_item.classification == "escape_from_jail" %}
+                                            onerror="this.onerror=null;this.src='/static/items/defaults/default_escape_from_jail.jpg';"
+                                        {% endif %}
                                     >
                                 {% else %}
                                     <span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary">

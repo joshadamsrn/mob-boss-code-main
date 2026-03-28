@@ -91,15 +91,16 @@ class _StubRoomsInboundForOptions:
 
 
 class _StubGameplayInboundForOptions:
-    def __init__(self) -> None:
+    def __init__(self, *, status: str = "in_progress") -> None:
         self.advanced_commands = []
         self.reported_deaths = []
+        self.status = status
 
     def get_game_details(self, _game_id: str):
         return SimpleNamespace(
             game_id="g-1",
             version=5,
-            status="in_progress",
+            status=self.status,
             phase="accused_selection",
             pending_trial=SimpleNamespace(accused_selection_deadline_epoch_seconds=100),
             participants=[
@@ -116,12 +117,18 @@ class _StubGameplayInboundForOptions:
 
 
 class _StubContainerForOptions:
-    def __init__(self, *, moderator_user_id: str, launched_game_id: str | None = "g-1") -> None:
+    def __init__(
+        self,
+        *,
+        moderator_user_id: str,
+        launched_game_id: str | None = "g-1",
+        gameplay_status: str = "in_progress",
+    ) -> None:
         self.rooms_inbound_port = _StubRoomsInboundForOptions(
             moderator_user_id=moderator_user_id,
             launched_game_id=launched_game_id,
         )
-        self.gameplay_inbound_port = _StubGameplayInboundForOptions()
+        self.gameplay_inbound_port = _StubGameplayInboundForOptions(status=gameplay_status)
 
 
 class WebOptionsViewTests(SimpleTestCase):
@@ -151,6 +158,23 @@ class WebOptionsViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Kill Game")
+
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_options_shows_return_to_lobby_for_ended_active_game(self, mock_get_container) -> None:
+        mock_get_container.return_value = _StubContainerForOptions(
+            moderator_user_id="u_mod",
+            gameplay_status="ended",
+        )
+        request = self.factory.get("/options/")
+        request.user = self.moderator
+        request.session = {"active_game_id": "g-1"}
+
+        response = options(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/"', html=False)
+        self.assertContains(response, "Return to Lobby")
+        self.assertNotContains(response, "Return to Game")
 
     @patch("project.mobboss_apps.web.views.messages.success")
     @patch("project.mobboss_apps.web.views.messages.error")

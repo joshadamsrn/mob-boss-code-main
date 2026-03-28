@@ -243,6 +243,19 @@ class RoomsService(RoomsInboundPort):
         idx = self._find_member_index(members, command.target_user_id)
         if idx < 0 or members[idx].membership_status != "joined":
             raise ValueError("Target must be a joined room member.")
+        conflicting_member = next(
+            (
+                member
+                for member in members
+                if member.user_id != command.target_user_id
+                and member.membership_status == "joined"
+                and member.assigned_role is not None
+                and member.assigned_role.role_name == command.role_name
+            ),
+            None,
+        )
+        if conflicting_member is not None:
+            raise ValueError(f"{command.role_name} is already assigned to {conflicting_member.username}.")
         members[idx] = replace(
             members[idx],
             assigned_role=RoomRoleAssignmentSnapshot(
@@ -334,6 +347,8 @@ class RoomsService(RoomsInboundPort):
         self._ensure_room_lobby(room)
         self._ensure_moderator(room, command.requested_by_user_id)
         room = self._ensure_required_catalog_items(room)
+        if not str(room.secret_mob_word).strip():
+            raise ValueError("Secret mob word must be set before launch.")
         participant_count = sum(
             1
             for member in room.members
@@ -344,9 +359,12 @@ class RoomsService(RoomsInboundPort):
                 f"At least {self._minimum_launch_players} joined players are required to launch (excluding moderator)."
             )
         active_items = sum(1 for item in room.items if item.is_active)
+        if active_items <= 0:
+            raise ValueError("At least one central supply item must be saved before launch.")
         if active_items < MIN_REQUIRED_ROOM_ITEMS:
             raise ValueError(f"At least {MIN_REQUIRED_ROOM_ITEMS} active catalog items are required to launch.")
-        room = self._assign_roles_for_joined_members(room, shuffle=True)
+        # Preserve the lobby role mapping at launch so moderator-selected
+        # assignments remain stable for targeted role testing.
         room = _apply_launch_catalog_pricing(room, participant_count=participant_count)
         if self._gameplay_inbound_port is None:
             game_id = self._repository.reserve_game_id(room.room_id)

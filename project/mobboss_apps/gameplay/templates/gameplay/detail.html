@@ -286,7 +286,7 @@
                 </div>
             </div>
 
-            <div id="playerAccusedOverlay" class="player-phone-overlay{% if not can_submit_accused_selection %} d-none{% endif %}" aria-modal="true" role="dialog">
+            <div id="playerAccusedOverlay" class="player-phone-overlay{% if not can_submit_accused_selection or defer_accused_overlay_for_leadership_notice %} d-none{% endif %}" aria-modal="true" role="dialog">
                 <div class="player-phone-overlay-panel">
                     {% include "gameplay/_moderator_accused_selection_card.html" with page=page %}
                 </div>
@@ -626,9 +626,7 @@
             </div>
         {% endif %}
 
-        {% if is_murder_banner_notice %}
-            <div id="murderAlertBanner" class="alert alert-danger py-2 px-3 murder-flash-banner">{{ trial_result_notice }}</div>
-        {% elif trial_result_notice %}
+        {% if trial_result_notice %}
             <div class="alert alert-info py-2 px-3">{{ trial_result_notice }}</div>
         {% endif %}
         {% if private_trial_notice %}
@@ -921,8 +919,10 @@
     const initialTrialResultNotice = "{{ trial_result_notice|escapejs }}";
     const initialPrivateTrialNotice = "{{ private_trial_notice|escapejs }}";
     const initialGameResultNotice = "{{ game_result_notice|escapejs }}";
-    const initialIsMurderBannerNotice = {{ is_murder_banner_notice|yesno:"true,false" }};
     const initialGameEnded = {% if page.status == "ended" %}true{% else %}false{% endif %};
+    const initialCanSubmitAccusedSelection = {{ can_submit_accused_selection|yesno:"true,false" }};
+    const initialJuryPromptCanVote = {{ jury_prompt.can_vote|yesno:"true,false" }};
+    const initialJuryPromptTamperCanVote = {{ jury_prompt.tamper_can_vote|yesno:"true,false" }};
     const gameApiQuery = isViewAsMode && asUserId ? `?as_user_id=${encodeURIComponent(asUserId)}` : "";
     const gameApiBase = `/gameplay/v1/games/${encodeURIComponent(gameId)}${gameApiQuery}`;
     const viewerUserId = "{{ page.viewer_user_id }}";
@@ -984,6 +984,10 @@
     let notificationOverlayTimerId = null;
     let activeNotificationKey = "";
     let activeNotificationMessage = "";
+    const leadershipTransitionMessages = new Set([
+      "You are now the Acting Chief of Police.",
+      "You are now the Acting Mob Boss.",
+    ]);
     const seenNotificationKeys = new Set();
     const participantNotesStorageKey = `game:${gameId}:participant-faction-notes:${viewerUserId}`;
     const playerScreenStorageKey = `game:${gameId}:player-screen:${viewerUserId}`;
@@ -1046,6 +1050,32 @@
     };
 
     const getActionPromptState = (snapshot) => {
+      if (snapshot && (
+        snapshot.can_submit_accused_selection !== undefined
+        || snapshot.can_submit_jury_vote !== undefined
+        || snapshot.can_submit_tamper_vote !== undefined
+      )) {
+        return {
+          canSubmitAccusedSelection: Boolean(snapshot.can_submit_accused_selection),
+          canSubmitJuryVote: Boolean(snapshot.can_submit_jury_vote),
+          canSubmitTamperVote: Boolean(snapshot.can_submit_tamper_vote),
+          incomingSaleOffersCount: toPositiveCount(
+            Array.isArray(snapshot.pending_sale_offers)
+              ? snapshot.pending_sale_offers.filter((offer) => String(offer && offer.buyer_user_id ? offer.buyer_user_id : "") === viewerUserId).length
+              : 0
+          ),
+          incomingGiftOffersCount: toPositiveCount(
+            Array.isArray(snapshot.pending_gift_offers)
+              ? snapshot.pending_gift_offers.filter((offer) => String(offer && offer.receiver_user_id ? offer.receiver_user_id : "") === viewerUserId).length
+              : 0
+          ),
+          incomingMoneyGiftOffersCount: toPositiveCount(
+            Array.isArray(snapshot.pending_money_gift_offers)
+              ? snapshot.pending_money_gift_offers.filter((offer) => String(offer && offer.receiver_user_id ? offer.receiver_user_id : "") === viewerUserId).length
+              : 0
+          ),
+        };
+      }
       const trial = snapshot && snapshot.pending_trial ? snapshot.pending_trial : null;
       const phase = snapshot && snapshot.phase ? snapshot.phase : "";
       const status = snapshot && snapshot.status ? snapshot.status : "";
@@ -1306,6 +1336,8 @@
       routeAfterNotificationDismiss();
     };
 
+    const isLeadershipTransitionMessage = (message) => leadershipTransitionMessages.has(String(message || "").trim());
+
     const hasBlockingActionOverlay = () => {
       if (!usePlayerPhoneLayout) {
         return false;
@@ -1314,6 +1346,27 @@
         (playerAccusedOverlay && !playerAccusedOverlay.classList.contains("d-none"))
         || (playerJuryOverlay && !playerJuryOverlay.classList.contains("d-none"))
       );
+    };
+
+    const updatePlayerActionOverlays = (snapshot) => {
+      if (!usePlayerPhoneLayout) {
+        return;
+      }
+      const actionState = getActionPromptState(snapshot);
+      const notifications = snapshot && Array.isArray(snapshot.viewer_notifications) ? snapshot.viewer_notifications : [];
+      const hasUnseenLeadershipTransitionNotice = notifications.some((event) => {
+        const message = event && event.message ? String(event.message) : "";
+        const notificationKey = `feed:${event.event_id || event.created_at_epoch_seconds || event.message || ""}`;
+        return isLeadershipTransitionMessage(message) && !hasSeenNotification(notificationKey, message);
+      });
+      if (playerAccusedOverlay) {
+        const shouldShowAccusedOverlay = actionState.canSubmitAccusedSelection && !hasUnseenLeadershipTransitionNotice;
+        playerAccusedOverlay.classList.toggle("d-none", !shouldShowAccusedOverlay);
+      }
+      if (playerJuryOverlay) {
+        const shouldShowJuryOverlay = actionState.canSubmitJuryVote || actionState.canSubmitTamperVote;
+        playerJuryOverlay.classList.toggle("d-none", !shouldShowJuryOverlay);
+      }
     };
 
     const markSnapshotNoticesSeen = (snapshot) => {
@@ -1398,6 +1451,7 @@
         }
         clearNotificationOverlay();
         if (currentSnapshot) {
+          updatePlayerActionOverlays(currentSnapshot);
           maybeShowOverlayNotification(currentSnapshot);
         }
       });
@@ -1412,6 +1466,7 @@
         playerJuryOverlay.classList.add("d-none");
         showPlayerScreen(currentPlayerScreen);
         if (currentSnapshot) {
+          updatePlayerActionOverlays(currentSnapshot);
           maybeShowOverlayNotification(currentSnapshot);
         }
       });
@@ -1478,12 +1533,8 @@
       if (latestPublicNotice) {
         const publicKey = `public:${latestPublicNotice}`;
         if (!hasSeenNotification(publicKey, latestPublicNotice)) {
-          const isUrgentNotice = (
-            initialIsMurderBannerNotice
-            || (latestPublicNotice.includes("WAS MURDERED WITH") && latestPublicNotice.includes("REPORT IMMEDIATELY TO COURT HOUSE"))
-          );
           showNotificationOverlay({
-            title: isUrgentNotice ? "Urgent Notice" : "Game Notice",
+            title: "Game Notice",
             message: latestPublicNotice,
             key: publicKey,
             playSound: hasCompletedInitialPhoneNotificationPass,
@@ -1953,6 +2004,16 @@
       }
       const previousSnapshot = currentSnapshot;
       currentSnapshot = data;
+      if (
+        data
+        && (
+          data.can_submit_accused_selection !== undefined
+          || data.can_submit_jury_vote !== undefined
+          || data.can_submit_tamper_vote !== undefined
+        )
+      ) {
+        updatePlayerActionOverlays(data);
+      }
       if (phaseBadge) phaseBadge.textContent = `Phase: ${data.phase}`;
       if (statusBadge) statusBadge.textContent = `Status: ${data.status}`;
       if (roundBadge) roundBadge.textContent = `Round: ${data.round_number}`;
@@ -2124,7 +2185,15 @@
 
     if (usePlayerPhoneLayout) {
       currentSnapshot = {
-        viewer_notifications: [],
+        viewer_notifications: [
+          {% for event in viewer_notifications %}
+            {
+              event_id: "{{ event.event_id|escapejs }}",
+              message: "{{ event.message|escapejs }}",
+              created_at_epoch_seconds: {{ event.created_at_epoch_seconds|default:0 }}
+            }{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ],
         latest_private_notice: initialPrivateTrialNotice,
         latest_public_notice: initialTrialResultNotice,
         pending_sale_offers: [
@@ -2165,6 +2234,9 @@
         status: "{{ page.status|escapejs }}",
         round_number: {{ page.round_number|default:1 }},
         version: {{ page.version|default:0 }},
+        can_submit_accused_selection: initialCanSubmitAccusedSelection,
+        can_submit_jury_vote: initialJuryPromptCanVote,
+        can_submit_tamper_vote: initialJuryPromptTamperCanVote,
         winning_faction: {% if page.status == "ended" and game_result_notice %}"ended"{% else %}""{% endif %},
       };
       maybeShowOverlayNotification(currentSnapshot);
@@ -2174,17 +2246,6 @@
     refreshSnapshot();
     window.setInterval(refreshSnapshot, pollIntervalMs);
     window.addEventListener("focus", refreshSnapshot);
-  })();
-</script>
-<script>
-  (() => {
-    const banner = document.getElementById("murderAlertBanner");
-    if (!banner) {
-      return;
-    }
-    window.setTimeout(() => {
-      banner.classList.add("d-none");
-    }, 60000);
   })();
 </script>
 <script>

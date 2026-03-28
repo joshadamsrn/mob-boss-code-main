@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import replace
 from datetime import datetime
 import re
 import time
@@ -104,6 +105,51 @@ _POLICE_LEADERSHIP_ROLES = {
 }
 _MOB_OPERATIVE_ROLES = {"Enforcer", "Made Man", "Gangster", "Street Thug", "Felon"}
 _TRADE_ROLES = {"Arms Dealer", "Smuggler", "Gun Runner", "Supplier", "Merchant"}
+
+
+def _default_inventory_item_image_path(classification: str) -> str:
+    if classification == "gun_tier_1":
+        return "/static/items/defaults/default_gun_tier_1.jpg"
+    if classification == "gun_tier_2":
+        return "/static/items/defaults/default_gun_tier_2.jpg"
+    if classification == "gun_tier_3":
+        return "/static/items/defaults/default_gun_tier_3.jpg"
+    if classification == "knife":
+        return "/static/items/defaults/default_knife.jpg"
+    if classification == "bulletproof_vest":
+        return "/static/items/defaults/default_bulletproof_vest.png"
+    if classification == "escape_from_jail":
+        return "/static/items/defaults/default_escape_from_jail.jpg"
+    return ""
+
+
+def _normalized_inventory_item_image_path(*, classification: str, image_path: str) -> str:
+    normalized_image_path = image_path.strip()
+    fallback_path = _default_inventory_item_image_path(classification)
+    if not fallback_path:
+        return normalized_image_path
+    if not normalized_image_path:
+        return fallback_path
+    legacy_default_prefix = f"/static/items/defaults/default_{classification}."
+    if normalized_image_path.startswith(legacy_default_prefix):
+        return fallback_path
+    return normalized_image_path
+
+
+def _with_inventory_image_fallbacks(inventory_items: list[object]) -> list[object]:
+    normalized_items: list[object] = []
+    for item in inventory_items:
+        image_path = str(getattr(item, "image_path", "") or "").strip()
+        classification = str(getattr(item, "classification", "") or "").strip()
+        normalized_image_path = _normalized_inventory_item_image_path(
+            classification=classification,
+            image_path=image_path,
+        )
+        if normalized_image_path == image_path:
+            normalized_items.append(item)
+            continue
+        normalized_items.append(replace(item, image_path=normalized_image_path))
+    return normalized_items
 _ROLE_ABILITY_IMAGE_FILENAMES = {
     "Chief of Police": "chief_of_police.png",
     "Mob Boss": "mob_boss.png",
@@ -539,6 +585,14 @@ def _viewer_notification_history(session, viewer_user_id: str) -> list[object]:
         key=lambda event: event.created_at_epoch_seconds,
         reverse=True,
     )
+
+
+def _is_leadership_transition_notification(message: str) -> bool:
+    normalized = str(message).strip()
+    return normalized in {
+        "You are now the Acting Chief of Police.",
+        "You are now the Acting Mob Boss.",
+    }
 
 
 def _current_trial_key(session) -> str:
@@ -1398,17 +1452,19 @@ def _active_detective_investigation_state(
         return None
     target_username = participant_name_by_id.get(target_user_id, target_user_id)
     total_transactions = current_participant.power_state.detective_last_viewed_transaction_total
+    sorted_transactions = sorted(
+        current_participant.power_state.detective_last_viewed_transactions,
+        key=lambda transaction: transaction.created_at_epoch_seconds,
+    )
     transaction_rows = [
         {
             "transaction_id": transaction.transaction_id,
-            "timestamp_text": _format_local_timestamp(transaction.created_at_epoch_seconds),
-            "sender_username": participant_name_by_id.get(transaction.sender_user_id, transaction.sender_user_id),
-            "recipient_username": participant_name_by_id.get(transaction.recipient_user_id, transaction.recipient_user_id),
-            "money_amount": transaction.money_amount,
-            "item_name": transaction.item_name,
-            "transaction_type_label": _detective_transaction_type_label(transaction.transaction_kind),
+            "summary_text": _detective_transaction_summary_text(
+                transaction,
+                participant_name_by_id=participant_name_by_id,
+            ),
         }
-        for transaction in current_participant.power_state.detective_last_viewed_transactions
+        for transaction in sorted_transactions
     ]
     return {
         "target_user_id": target_user_id,
@@ -1416,7 +1472,6 @@ def _active_detective_investigation_state(
         "visible_until_epoch_seconds": visible_until,
         "transaction_rows": transaction_rows,
         "total_transactions": total_transactions,
-        "has_fewer_than_three": total_transactions < 3,
     }
 
 
@@ -1453,9 +1508,34 @@ def _detective_transaction_type_label(transaction_kind: str) -> str:
     return "Transaction"
 
 
+def _detective_transaction_summary_text(
+    transaction,
+    *,
+    participant_name_by_id: dict[str, str],
+) -> str:
+    sender_username = participant_name_by_id.get(transaction.sender_user_id, transaction.sender_user_id)
+    recipient_username = participant_name_by_id.get(transaction.recipient_user_id, transaction.recipient_user_id)
+    time_text = _format_local_time(transaction.created_at_epoch_seconds)
+    item_or_money = transaction.item_name or (f"${transaction.money_amount}" if transaction.money_amount else "item")
+    if transaction.transaction_kind == "sale":
+        return f"{recipient_username} purchased {item_or_money} from {sender_username} at {time_text}"
+    if transaction.transaction_kind == "money_gift":
+        return f"{recipient_username} was gifted ${transaction.money_amount} from {sender_username} at {time_text}"
+    if transaction.transaction_kind == "item_gift":
+        return f"{recipient_username} was gifted {item_or_money} from {sender_username} at {time_text}"
+    if transaction.transaction_kind == "item_theft":
+        return f"{recipient_username} stole {item_or_money} from {sender_username} at {time_text}"
+    return f"{recipient_username} received {item_or_money} from {sender_username} at {time_text}"
+
+
 def _format_local_timestamp(epoch_seconds: int) -> str:
     local_dt = datetime.fromtimestamp(epoch_seconds)
     return local_dt.strftime("%Y-%m-%d %I:%M %p").replace(" 0", " ")
+
+
+def _format_local_time(epoch_seconds: int) -> str:
+    local_dt = datetime.fromtimestamp(epoch_seconds)
+    return local_dt.strftime("%I:%M %p").lstrip("0")
 
 
 def _can_activate_police_officer_confiscation_view(session) -> bool:
@@ -1766,19 +1846,21 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         )
         tamper_target_user_id = session.pending_trial.gangster_tamper_target_user_id if session.pending_trial is not None else None
         tamper_actor_user_id = session.pending_trial.gangster_tamper_actor_user_id if session.pending_trial is not None else None
+        current_user_is_juror = current_user_id in jury_user_ids
         jury_prompt = {
             "show": (
                 page.phase == "trial_voting"
                 and session.pending_trial is not None
-                and (current_user_id in jury_user_ids or tamper_actor_user_id == current_user_id)
+                and (current_user_is_juror or tamper_actor_user_id == current_user_id)
             ),
+            "is_juror": current_user_is_juror,
             "accused_user_id": session.pending_trial.accused_user_id if session.pending_trial is not None else None,
             "accused_username": participant_name_by_id.get(
                 session.pending_trial.accused_user_id if session.pending_trial is not None else "",
                 "Unknown",
             ),
             "has_voted": current_user_has_voted,
-            "can_vote": is_jury_voting_active and not current_user_has_voted and not current_user_is_silenced,
+            "can_vote": is_jury_voting_active and current_user_is_juror and not current_user_has_voted,
             "is_silenced": current_user_is_silenced,
             "silence_notice": "You seem to be afraid to testify at court. You must remain silent during this trial.",
             "show_tamper_vote": page.phase == "trial_voting" and tamper_actor_user_id == current_user_id,
@@ -1786,14 +1868,14 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             "tamper_can_vote": (
                 session.pending_trial is not None
                 and tamper_actor_user_id == current_user_id
-                and session.pending_trial.gangster_tamper_vote_deadline_epoch_seconds is not None
+                and tamper_target_user_id is not None
                 and not current_user_has_tamper_vote
             ),
             "tamper_vote_deadline_epoch_seconds": (
                 session.pending_trial.gangster_tamper_vote_deadline_epoch_seconds if session.pending_trial is not None else None
             ),
             "tamper_target_username": participant_name_by_id.get(tamper_target_user_id or "", "Unknown"),
-            "waiting_for_moderator": (not is_jury_voting_active),
+            "waiting_for_moderator": (current_user_is_juror and not is_jury_voting_active),
             "vote_deadline_epoch_seconds": (
                 session.pending_trial.vote_deadline_epoch_seconds if session.pending_trial is not None else None
             ),
@@ -1803,6 +1885,10 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 and session.pending_trial.vote_deadline_epoch_seconds > 0
             ),
         }
+        defer_accused_overlay_for_leadership_notice = (
+            can_submit_accused_selection
+            and any(_is_leadership_transition_notification(event.message) for event in viewer_notifications)
+        )
         moderator_trial_control = {
             "show": (
                 (page.is_moderator or page.is_ghost_view)
@@ -1845,7 +1931,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             ],
             key=lambda item: str(item["display_name"]).lower(),
         )
-        merchant_inventory_items = [] if current_participant is None else list(current_participant.inventory)
+        merchant_inventory_items = [] if current_participant is None else _with_inventory_image_fallbacks(list(current_participant.inventory))
         merchant_sale_targets = sorted(
             [
                 participant
@@ -1868,7 +1954,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             player_count = max(7, min(len(session.participants), 25))
             goal_bonus = int(session.ledger.circulating_currency_baseline * MERCHANT_GOAL_ADDITIONAL_PERCENT)
             merchant_money_goal = getStartingMoney(player_count, current_participant.role_name) + goal_bonus
-        player_inventory_items = [] if current_participant is None else list(current_participant.inventory)
+        player_inventory_items = [] if current_participant is None else _with_inventory_image_fallbacks(list(current_participant.inventory))
         player_role_name = "" if current_participant is None else current_participant.role_name
         player_role_label = ""
         if current_participant is not None:
@@ -1921,12 +2007,6 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         private_trial_notice = ""
         if session.latest_private_notice_user_id == current_user_id and session.latest_private_notice_message:
             private_trial_notice = session.latest_private_notice_message
-        is_murder_banner_notice = (
-            page.status == "in_progress"
-            and page.phase in {"accused_selection", "trial_voting", "boundary_resolution"}
-            and "WAS MURDERED WITH " in trial_result_notice
-            and "REPORT IMMEDIATELY TO COURT HOUSE" in trial_result_notice
-        )
         game_result_notice = ""
         if session.status == "ended" and session.winning_faction:
             if session.winning_faction == "Merchant" and session.winning_user_id:
@@ -2053,6 +2133,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "viewed_role_name": viewed_role_name,
                 "viewed_role_image_url": viewed_role_image_url,
                 "can_submit_accused_selection": can_submit_accused_selection,
+                "defer_accused_overlay_for_leadership_notice": defer_accused_overlay_for_leadership_notice,
                 "accused_candidate_rows": accused_candidate_rows,
                 "jury_prompt": jury_prompt,
                 "moderator_trial_control": moderator_trial_control,
@@ -2060,7 +2141,6 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "private_trial_notice": private_trial_notice,
                 "viewer_notifications": viewer_notifications,
                 "viewer_notification_history": viewer_notification_history,
-                "is_murder_banner_notice": is_murder_banner_notice,
                 "game_result_notice": game_result_notice,
                 "police_mob_kills_count": session.police_mob_kills_count,
                 "police_mob_kills_allowed": police_mob_kills_allowed,

@@ -1,17 +1,20 @@
 {% if jury_prompt.show %}
     <div id="juryDutyCard" class="card hero-card mb-3">
         <div class="card-body p-3 p-md-4">
-            <h2 class="h6 mb-2">Jury Duty</h2>
-            <div class="small text-secondary mb-2">You were selected as a juror.</div>
+            <h2 class="h6 mb-2">{% if jury_prompt.is_juror %}Jury Duty{% else %}Tamper Vote{% endif %}</h2>
+            {% if jury_prompt.is_juror %}
+                <div class="small text-secondary mb-2">You were selected as a juror.</div>
+            {% endif %}
             <div class="small text-secondary mb-3">Accused player: <strong>{{ jury_prompt.accused_username }}</strong></div>
             {% if jury_prompt.is_silenced %}
-                <div class="alert alert-warning py-2 px-3 mb-0">{{ jury_prompt.silence_notice }}</div>
-            {% elif jury_prompt.has_voted %}
+                <div class="alert alert-warning py-2 px-3 mb-3">{{ jury_prompt.silence_notice }}</div>
+            {% endif %}
+            {% if jury_prompt.is_juror and jury_prompt.has_voted %}
                 <div class="alert alert-success py-2 px-3 mb-3">Your vote has been submitted.</div>
                 <button type="button" class="btn btn-outline-primary btn-sm dismiss-jury-overlay">Okay</button>
-            {% elif jury_prompt.waiting_for_moderator %}
+            {% elif jury_prompt.is_juror and jury_prompt.waiting_for_moderator %}
                 <div class="alert alert-info py-2 px-3 mb-0">Waiting for the moderator to start jury voting.</div>
-            {% elif jury_prompt.can_vote %}
+            {% elif jury_prompt.is_juror and jury_prompt.can_vote %}
                 {% if jury_prompt.vote_timer_active %}
                     <div class="small text-secondary mb-2">
                         Vote timer:
@@ -26,7 +29,7 @@
                     <button class="btn btn-danger btn-sm" type="submit" name="vote" value="guilty">Guilty</button>
                     <button class="btn btn-outline-secondary btn-sm" type="submit" name="vote" value="innocent">Not Guilty</button>
                 </form>
-            {% else %}
+            {% elif jury_prompt.is_juror %}
                 <div class="alert alert-secondary py-2 px-3 mb-0">Jury voting is not currently available.</div>
             {% endif %}
             {% if jury_prompt.show_tamper_vote %}

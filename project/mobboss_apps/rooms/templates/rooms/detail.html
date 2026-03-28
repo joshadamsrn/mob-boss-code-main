@@ -54,7 +54,7 @@
 
 {% block content %}
 <section class="container page-shell py-3 py-md-4 room-shell">
-    <div class="card hero-card room-summary-card mb-3">
+    <div id="roomSummaryCard" class="card hero-card room-summary-card mb-3">
         <div class="card-body p-3 p-md-4">
             <div class="room-summary-head {% if is_moderator or is_joined %}room-summary-head-has-launch{% endif %}">
                 <div class="room-title-block text-center">
@@ -124,6 +124,12 @@
                     <span class="badge text-bg-light border">
                         {% if all_joined_ready %}All Ready{% else %}Waiting on Ready{% endif %}
                     </span>
+                    <span class="badge text-bg-light border">
+                        {% if central_supply_ready %}Supply Saved{% else %}Supply Not Saved{% endif %}
+                    </span>
+                    <span class="badge text-bg-light border">
+                        {% if secret_word_ready %}Secret Word Saved{% else %}Secret Word Missing{% endif %}
+                    </span>
                     {% if dev_launch_override_active %}
                         <span class="badge text-bg-info">DEV Min Override</span>
                     {% endif %}
@@ -143,6 +149,11 @@
             {% if actor_is_moderator and is_lobby and player_count == 0 %}
                 <div class="alert alert-info mt-3 mb-0 py-2">
                     You are the moderator for this room. Set up central supply now. Item photos are optional and stock icons are available by default.
+                </div>
+            {% endif %}
+            {% if actor_is_moderator and is_lobby and not can_launch %}
+                <div class="small text-secondary mt-2">
+                    Launch requires: minimum players, all players ready, at least one saved central supply item, and a saved Mob secret word.
                 </div>
             {% endif %}
 
@@ -188,6 +199,12 @@
                                 <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
                                 <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
                                 <button class="btn btn-outline-dark btn-xs" type="submit">Add Dev Seat</button>
+                            </form>
+                            <form method="post" action="/rooms/{{ room.room_id }}/dev/mark-all-ready" class="mb-0">
+                                {% csrf_token %}
+                                <input type="hidden" name="as_user_id" value="{{ current_user_id }}">
+                                <input type="hidden" name="simulate_actions" value="{% if simulate_actions_enabled %}1{% else %}0{% endif %}">
+                                <button class="btn btn-outline-success btn-xs" type="submit">Mark All Ready</button>
                             </form>
                             <span class="small text-secondary">Use the tabs above to switch between each seat's view.</span>
                         </div>
@@ -252,6 +269,27 @@
                                         </span>
                                     </div>
                                 </div>
+                                {% if actor_is_moderator and member.assigned_role %}
+                                    <div class="small text-secondary mt-2">
+                                        Role: {{ member.assigned_role.role_name }}{% if member.assigned_role.faction != "Merchant" %} ({{ member.assigned_role.faction }} #{{ member.assigned_role.rank }}){% endif %}
+                                    </div>
+                                {% endif %}
+                                {% if actor_is_moderator and is_lobby and not is_view_as_mode and member.membership_status == "joined" %}
+                                    <form method="post" action="/rooms/{{ room.room_id }}/assign-role" class="mt-2">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="target_user_id" value="{{ member.user_id }}">
+                                        <div class="d-flex flex-column flex-md-row gap-2">
+                                            <select class="form-select form-select-sm" name="role_name" aria-label="Assign role for {{ member.username }}">
+                                                {% for choice in role_assignment_choices %}
+                                                    <option value="{{ choice.role_name }}" {% if member.assigned_role and member.assigned_role.role_name == choice.role_name %}selected{% endif %}>
+                                                        {{ choice.faction }}: {{ choice.role_name }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                            <button class="btn btn-outline-primary btn-sm" type="submit">Set Role</button>
+                                        </div>
+                                    </form>
+                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
@@ -300,107 +338,109 @@
                 </div>
             {% endif %}
 
-            <div class="card hero-card">
-                <div class="card-body p-3 p-md-4">
-                    <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-                        <h2 class="h6 mb-0">Catalog ({{ catalog_items|length }})</h2>
-                    </div>
-                    <p class="small text-secondary mb-2">Items currently in Central Supply.</p>
-                    {% if actor_is_moderator and is_lobby and not is_view_as_mode %}
-                        <div class="alert alert-light border mb-3" id="centralSupplyWizardCard">
-                            <div class="fw-semibold mb-2" id="centralSupplyQuestionsHeading">Central Supply Build Questions</div>
-                            <div class="d-none mb-2" id="editCentralSupplyWrapper">
-                                <button class="btn btn-outline-secondary btn-sm" type="button" id="editCentralSupplyButton">Edit Central Supply</button>
-                            </div>
-                            <div id="centralSupplyQuestions">
-                                <form id="centralSupplyWizardForm" class="d-flex flex-column gap-2">
-                                    <div>
-                                        <label class="form-label form-label-sm mb-1">How many players (excluding you) are you planning on?</label>
-                                        <input class="form-control form-control-sm" type="number" id="wizardPlayerCount" min="1" max="25" value="7" required>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="wizardIncludeSpecialty" checked>
-                                        <label class="form-check-label small" for="wizardIncludeSpecialty">
-                                            Add recommended specialty items (Bulletproof Vest and Escape From Jail)
-                                        </label>
-                                    </div>
-                                    <div class="row g-2">
-                                        <div class="col-12 col-md-4">
-                                            <label class="form-label form-label-sm mb-1">How many Tier 1 guns (large, hard to conceal)?</label>
-                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="1" type="number" min="0" max="20" value="0">
-                                        </div>
-                                        <div class="col-12 col-md-4">
-                                            <label class="form-label form-label-sm mb-1">How many Tier 2 guns (medium size)?</label>
-                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="2" type="number" min="0" max="20" value="0">
-                                        </div>
-                                        <div class="col-12 col-md-4">
-                                            <label class="form-label form-label-sm mb-1">How many Tier 3 guns (small, easy to conceal)?</label>
-                                            <input class="form-control form-control-sm wizard-tier-count" data-tier="3" type="number" min="0" max="20" value="0">
-                                        </div>
-                                    </div>
-                                    <div id="wizardGunDetails" class="d-flex flex-column gap-2"></div>
-                                    <div>
-                                        <label class="form-label form-label-sm mb-1">How many knives do you want to sell in central supply?</label>
-                                        <input class="form-control form-control-sm" type="number" id="wizardKnifeCount" min="0" max="20" value="0">
-                                    </div>
-                                    <div>
-                                        <button class="btn btn-primary btn-sm" type="submit">Build Central Supply</button>
-                                    </div>
-                                </form>
-                            </div>
-                            <hr class="my-3">
-                            <div id="generatedSupplySetup" class="d-none">
-                                <div class="fw-semibold mb-2">Central Supply Setup Card</div>
-                                <div class="small text-secondary mb-2">
-                                    Name, price, and optional photo are editable. Save each row to add it to central supply.
-                                </div>
-                                <div class="d-flex flex-column gap-2" id="generatedSupplyRows"></div>
-                                <div class="d-flex align-items-center gap-2 mt-2">
-                                    <button class="btn btn-success btn-sm" type="button" id="saveAllGeneratedRows">Save All</button>
-                                    <span class="small text-secondary" id="saveAllGeneratedRowsStatus"></span>
-                                </div>
-                            </div>
+            {% if actor_is_moderator %}
+                <div class="card hero-card">
+                    <div class="card-body p-3 p-md-4">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                            <h2 class="h6 mb-0">Catalog ({{ catalog_items|length }})</h2>
                         </div>
-                    {% endif %}
-
-                    <div id="catalogPanel" class="collapse show catalog-scroll-panel">
-                        {% if catalog_items %}
-                            {% for card in catalog_items %}
-                                {% if is_moderator or card.item.is_active %}
-                                    <div class="room-item-row">
-                                        <button
-                                            type="button"
-                                            class="room-item-open"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#catalogImageModal{{ card.index }}"
-                                            aria-label="View {{ card.item.display_name }} image"
-                                        >
-                                            <span class="room-item-idx">#{{ card.index }}</span>
-                                            {% if card.tile_image_path %}
-                                                <img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy">
-                                            {% else %}
-                                                <span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary">
-                                                    <i class="bi bi-image"></i>
-                                                </span>
-                                            {% endif %}
-                                            <span class="room-item-meta">
-                                                <span class="room-item-title-line">
-                                                    <span class="fw-semibold">{{ card.item.display_name }}</span>
-                                                </span>
-                                            </span>
-                                            {% if is_moderator %}
-                                                <span class="room-item-price">${{ card.item.base_price }}</span>
-                                            {% endif %}
-                                        </button>
+                        <p class="small text-secondary mb-2">Items currently in Central Supply.</p>
+                        {% if is_lobby and not is_view_as_mode %}
+                            <div class="alert alert-light border mb-3" id="centralSupplyWizardCard">
+                                <div class="fw-semibold mb-2" id="centralSupplyQuestionsHeading">Central Supply Build Questions</div>
+                                <div class="d-none mb-2" id="editCentralSupplyWrapper">
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="editCentralSupplyButton">Edit Central Supply</button>
+                                </div>
+                                <div id="centralSupplyQuestions">
+                                    <form id="centralSupplyWizardForm" class="d-flex flex-column gap-2">
+                                        <div>
+                                            <label class="form-label form-label-sm mb-1">How many players (excluding you) are you planning on?</label>
+                                            <input class="form-control form-control-sm" type="number" id="wizardPlayerCount" min="1" max="25" value="7" required>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="wizardIncludeSpecialty" checked>
+                                            <label class="form-check-label small" for="wizardIncludeSpecialty">
+                                                Add recommended specialty items (Bulletproof Vest and Escape From Jail)
+                                            </label>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label form-label-sm mb-1">How many Tier 1 guns (large, hard to conceal)?</label>
+                                                <input class="form-control form-control-sm wizard-tier-count" data-tier="1" type="number" min="0" max="20" value="0">
+                                            </div>
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label form-label-sm mb-1">How many Tier 2 guns (medium size)?</label>
+                                                <input class="form-control form-control-sm wizard-tier-count" data-tier="2" type="number" min="0" max="20" value="0">
+                                            </div>
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label form-label-sm mb-1">How many Tier 3 guns (small, easy to conceal)?</label>
+                                                <input class="form-control form-control-sm wizard-tier-count" data-tier="3" type="number" min="0" max="20" value="0">
+                                            </div>
+                                        </div>
+                                        <div id="wizardGunDetails" class="d-flex flex-column gap-2"></div>
+                                        <div>
+                                            <label class="form-label form-label-sm mb-1">How many knives do you want to sell in central supply?</label>
+                                            <input class="form-control form-control-sm" type="number" id="wizardKnifeCount" min="0" max="20" value="0">
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-primary btn-sm" type="submit">Build Central Supply</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                <hr class="my-3">
+                                <div id="generatedSupplySetup" class="d-none">
+                                    <div class="fw-semibold mb-2">Central Supply Setup Card</div>
+                                    <div class="small text-secondary mb-2">
+                                        Name, price, and optional photo are editable. Save each row to add it to central supply.
                                     </div>
-                                {% endif %}
-                            {% endfor %}
-                        {% else %}
-                            <p class="text-secondary mb-0">No catalog items yet.</p>
+                                    <div class="d-flex flex-column gap-2" id="generatedSupplyRows"></div>
+                                    <div class="d-flex align-items-center gap-2 mt-2">
+                                        <button class="btn btn-success btn-sm" type="button" id="saveAllGeneratedRows">Save All</button>
+                                        <span class="small text-secondary" id="saveAllGeneratedRowsStatus"></span>
+                                    </div>
+                                </div>
+                            </div>
                         {% endif %}
+
+                        <div id="catalogPanel" class="collapse show catalog-scroll-panel">
+                            {% if catalog_items %}
+                                {% for card in catalog_items %}
+                                    {% if is_moderator or card.item.is_active %}
+                                        <div class="room-item-row">
+                                            <button
+                                                type="button"
+                                                class="room-item-open"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#catalogImageModal{{ card.index }}"
+                                                aria-label="View {{ card.item.display_name }} image"
+                                            >
+                                                <span class="room-item-idx">#{{ card.index }}</span>
+                                                {% if card.tile_image_path %}
+                                                    <img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy">
+                                                {% else %}
+                                                    <span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary">
+                                                        <i class="bi bi-image"></i>
+                                                    </span>
+                                                {% endif %}
+                                                <span class="room-item-meta">
+                                                    <span class="room-item-title-line">
+                                                        <span class="fw-semibold">{{ card.item.display_name }}</span>
+                                                    </span>
+                                                </span>
+                                                {% if is_moderator %}
+                                                    <span class="room-item-price">${{ card.item.base_price }}</span>
+                                                {% endif %}
+                                            </button>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-secondary mb-0">No catalog items yet.</p>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-            </div>
+            {% endif %}
         </div>
 
     </div>
@@ -437,11 +477,16 @@
 
         const html = await response.text();
         const doc = new DOMParser().parseFromString(html, "text/html");
+        const nextSummary = doc.getElementById("roomSummaryCard");
         const nextHeading = doc.getElementById("roomMembersHeading");
         const nextList = doc.getElementById("roomMembersList");
+        const currentSummary = document.getElementById("roomSummaryCard");
         const currentHeading = document.getElementById("roomMembersHeading");
         const currentList = document.getElementById("roomMembersList");
 
+        if (nextSummary && currentSummary) {
+          currentSummary.innerHTML = nextSummary.innerHTML;
+        }
         if (nextHeading && currentHeading) {
           currentHeading.textContent = nextHeading.textContent;
         }
@@ -520,6 +565,7 @@
           secretWordInput.removeAttribute("name");
           secretWordButton.textContent = "View / Change Secret Word";
           isMaskedSecret = true;
+          window.location.reload();
         } catch (error) {
           secretWordForm.submit();
           return;

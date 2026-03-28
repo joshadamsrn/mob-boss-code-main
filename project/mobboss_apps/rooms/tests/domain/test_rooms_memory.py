@@ -55,6 +55,25 @@ def _join_members_from_fixture(service: RoomsService, room_id: str, fixture_name
         )
 
 
+def _configure_launch_prerequisites(service: RoomsService, room_id: str) -> None:
+    service.set_mob_secret_word(
+        SetMobSecretWordCommand(
+            room_id=room_id,
+            moderator_user_id="u_mod",
+            secret_mob_word="RAVEN",
+        )
+    )
+    service.upsert_room_item(
+        UpsertRoomItemCommand(
+            room_id=room_id,
+            moderator_user_id="u_mod",
+            classification="knife",
+            display_name="Knife",
+            base_price=100,
+        )
+    )
+
+
 @dataclass
 class _StartedGame:
     game_id: str
@@ -171,6 +190,35 @@ class RoomMemoryServiceTests(unittest.TestCase):
         member = next(m for m in details.members if m.user_id == "u_1")
         assert member.assigned_role is not None
         self.assertEqual(member.assigned_role.role_name, "Deputy")
+
+    def test_manual_role_assignment_rejects_duplicate_unique_role(self) -> None:
+        self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_1", username="p1"))
+        self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_2", username="p2"))
+
+        self.service.assign_room_role(
+            AssignRoomRoleCommand(
+                room_id=self.room_id,
+                moderator_user_id="u_mod",
+                target_user_id="u_1",
+                faction="Police",
+                role_name="Police Officer",
+                rank=9,
+            )
+        )
+
+        with self.assertRaises(ValueError) as ctx:
+            self.service.assign_room_role(
+                AssignRoomRoleCommand(
+                    room_id=self.room_id,
+                    moderator_user_id="u_mod",
+                    target_user_id="u_2",
+                    faction="Police",
+                    role_name="Police Officer",
+                    rank=9,
+                )
+            )
+
+        self.assertEqual(str(ctx.exception), "Police Officer is already assigned to p1.")
 
     def test_moderator_sets_member_balance_with_nearest_ten_rounding(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_2", username="p2"))
@@ -383,6 +431,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
 
     def test_launch_requires_moderator_and_min_joined_members(self) -> None:
         _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_6.json")
+        _configure_launch_prerequisites(self.service, self.room_id)
 
         with self.assertRaises(PermissionError):
             self.service.launch_game_from_room(
@@ -407,6 +456,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         room = service.create_room(
             CreateRoomCommand(name="Dev Launch Room", creator_user_id="u_mod", creator_username="mod")
         )
+        _configure_launch_prerequisites(service, room.room_id)
 
         service.join_room(JoinRoomCommand(room_id=room.room_id, user_id="u_1", username="p1"))
         with self.assertRaises(ValueError):
@@ -431,6 +481,7 @@ class RoomMemoryServiceTests(unittest.TestCase):
         )
 
         _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
+        _configure_launch_prerequisites(service, room.room_id)
 
         game_id = service.launch_game_from_room(
             LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
@@ -445,6 +496,86 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertGreaterEqual(len(start_command.catalog), MIN_REQUIRED_ROOM_ITEMS)
         self.assertEqual(service.get_room_details(room.room_id).status, "in_progress")
 
+    def test_launch_preserves_lobby_role_assignments_for_targeted_role_testing(self) -> None:
+        repo = MemoryRoomsRepository()
+        gameplay = _StubGameplayInboundPort(game_id="game-r-pinned")
+        service = RoomsService(repo, gameplay_inbound_port=gameplay)
+        room = service.create_room(
+            CreateRoomCommand(name="Pinned Role Room", creator_user_id="u_mod", creator_username="mod")
+        )
+
+        _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
+        _configure_launch_prerequisites(service, room.room_id)
+        service.assign_room_role(
+            AssignRoomRoleCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                target_user_id="u_3",
+                faction="Mob",
+                role_name="Kingpin",
+                rank=4,
+            )
+        )
+        service.assign_room_role(
+            AssignRoomRoleCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                target_user_id="u_4",
+                faction="Police",
+                role_name="Detective",
+                rank=7,
+            )
+        )
+
+        service.launch_game_from_room(
+            LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
+        )
+
+        start_command = gameplay.commands[0]
+        participants_by_user_id = {participant.user_id: participant for participant in start_command.participants}
+        self.assertEqual(participants_by_user_id["u_3"].role_name, "Kingpin")
+        self.assertEqual(participants_by_user_id["u_3"].faction, "Mob")
+        self.assertEqual(participants_by_user_id["u_3"].rank, 4)
+        self.assertEqual(participants_by_user_id["u_4"].role_name, "Detective")
+        self.assertEqual(participants_by_user_id["u_4"].faction, "Police")
+        self.assertEqual(participants_by_user_id["u_4"].rank, 7)
+
+    def test_launch_requires_secret_word_before_launch(self) -> None:
+        _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
+        self.service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=self.room_id,
+                moderator_user_id="u_mod",
+                classification="knife",
+                display_name="Knife",
+                base_price=100,
+            )
+        )
+
+        with self.assertRaises(ValueError) as ctx:
+            self.service.launch_game_from_room(
+                LaunchGameFromRoomCommand(room_id=self.room_id, requested_by_user_id="u_mod")
+            )
+
+        self.assertEqual(str(ctx.exception), "Secret mob word must be set before launch.")
+
+    def test_launch_requires_saved_central_supply_item_before_launch(self) -> None:
+        _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")
+        self.service.set_mob_secret_word(
+            SetMobSecretWordCommand(
+                room_id=self.room_id,
+                moderator_user_id="u_mod",
+                secret_mob_word="RAVEN",
+            )
+        )
+
+        with self.assertRaises(ValueError) as ctx:
+            self.service.launch_game_from_room(
+                LaunchGameFromRoomCommand(room_id=self.room_id, requested_by_user_id="u_mod")
+            )
+
+        self.assertEqual(str(ctx.exception), "At least one central supply item must be saved before launch.")
+
     def test_launch_applies_player_count_pricing_and_preserves_manual_override(self) -> None:
         repo = MemoryRoomsRepository()
         gameplay = _StubGameplayInboundPort(game_id="game-r-price")
@@ -453,6 +584,13 @@ class RoomMemoryServiceTests(unittest.TestCase):
             CreateRoomCommand(name="Pricing Room", creator_user_id="u_mod", creator_username="mod")
         )
         _join_members_from_fixture(service, room.room_id, "join_members_1_to_7.json")
+        service.set_mob_secret_word(
+            SetMobSecretWordCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                secret_mob_word="RAVEN",
+            )
+        )
 
         service.upsert_room_item(
             UpsertRoomItemCommand(

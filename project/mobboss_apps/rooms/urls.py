@@ -9,6 +9,7 @@ urlpatterns = [
     path("<str:room_id>/leave", views.leave_room, name="rooms-leave"),
     path("<str:room_id>/dev/add-seat", views.add_dev_seat, name="rooms-dev-add-seat"),
     path("<str:room_id>/dev/remove-seat", views.remove_dev_seat, name="rooms-dev-remove-seat"),
+    path("<str:room_id>/dev/mark-all-ready", views.mark_all_ready, name="rooms-dev-mark-all-ready"),
     path("<str:room_id>/ready", views.set_ready, name="rooms-ready"),
     path("<str:room_id>/assign-role", views.assign_role, name="rooms-assign-role"),
     path("<str:room_id>/set-balance", views.set_balance, name="rooms-set-balance"),

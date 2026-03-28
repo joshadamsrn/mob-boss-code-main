@@ -78,7 +78,6 @@ from project.mobboss_apps.mobboss.src.weights import DEFAULT_WEIGHTS
 from project.mobboss_apps.mobboss.exceptions import ConflictProblem
 
 KINGPIN_JURY_TIMER_SECONDS = 15
-GANGSTER_TAMPER_VOTE_TIMEOUT_SECONDS = 10
 PROTECTIVE_CUSTODY_DURATION_SECONDS = 300
 SHERIFF_JURY_LOG_VISIBLE_SECONDS = 60
 CAPTAIN_ASSET_FREEZE_SECONDS = 600
@@ -289,14 +288,61 @@ class GameplayService(GameplayInboundPort):
                 user_id=murderer_participant.user_id,
                 delta=vest_inventory_item.acquisition_value,
             )
+            unavailable_user_ids = {captured_target_user_id} if captured_target_user_id else set()
+            next_police_leader_user_id = _resolve_next_leader_user_id(
+                next_participants,
+                faction="Police",
+                current_leader_user_id=session.current_police_leader_user_id,
+                unavailable_user_ids=unavailable_user_ids,
+            )
+            next_mob_leader_user_id = _resolve_next_leader_user_id(
+                next_participants,
+                faction="Mob",
+                current_leader_user_id=session.current_mob_leader_user_id,
+                unavailable_user_ids=unavailable_user_ids,
+            )
+            accused_selection_cursor = [next_police_leader_user_id] if next_police_leader_user_id else []
+            silenced_user_ids, post_trial_participants, post_trial_notification_feed = _apply_armed_don_silence_for_upcoming_trial(
+                next_participants,
+                accused_selection_cursor=accused_selection_cursor,
+                moderator_user_id=session.moderator_user_id,
+                notification_feed=session.notification_feed,
+                now_epoch_seconds=now_epoch_seconds,
+            )
+            pending_trial = TrialStateSnapshot(
+                murdered_user_id=command.murdered_user_id,
+                murderer_user_id=murderer_user_id,
+                accused_user_id=None,
+                accused_selection_cursor=accused_selection_cursor,
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=[],
+                vote_deadline_epoch_seconds=None,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None if accused_selection_cursor else "no_conviction",
+                accused_by_user_id=None,
+                silenced_user_ids=silenced_user_ids,
+            )
+            next_phase = cast(GamePhase, "accused_selection" if accused_selection_cursor else "boundary_resolution")
             updated = replace(
                 session,
-                participants=next_participants,
+                participants=post_trial_participants,
+                pending_trial=pending_trial,
+                phase=next_phase,
+                current_police_leader_user_id=next_police_leader_user_id,
+                current_mob_leader_user_id=next_mob_leader_user_id,
                 latest_public_notice=(
-                    f"{murdered_participant.username.upper()} SURVIVED A {attack_display_name.upper()} SHOT USING A BULLETPROOF VEST"
+                    f"ATTEMPTED MURDER ON {murdered_participant.username.upper()} WITH {attack_display_name.upper()} - REPORT IMMEDIATELY TO COURT HOUSE"
                 ),
-                latest_private_notice_user_id=None,
-                latest_private_notice_message=None,
+                latest_private_notice_user_id=command.murdered_user_id,
+                latest_private_notice_message=(
+                    "The murder attempt failed because your bulletproof vest stopped the shot."
+                ),
+                notification_feed=post_trial_notification_feed,
+                pending_gift_offers=[],
+                pending_money_gift_offers=[],
+                pending_sale_offers=[],
                 version=session.version + 1,
             )
             updated = _append_ledger_entries(
@@ -312,7 +358,7 @@ class GameplayService(GameplayInboundPort):
                     )
                 ],
             )
-            updated = self._resolve_information_winner_if_needed(updated, now_epoch_seconds=now_epoch_seconds)
+            updated = self._resolve_boundary_if_needed(updated, now_epoch_seconds=now_epoch_seconds)
             self._save_game_session(session, updated)
             return updated
 
@@ -438,12 +484,65 @@ class GameplayService(GameplayInboundPort):
             unavailable_user_ids=unavailable_user_ids,
         )
 
+        murder_notice = (
+            f"{murdered_participant.username.upper()} WAS MURDERED WITH "
+            f"{'GUN' if _is_gun_attack_classification(command.attack_classification) else 'KNIFE'} "
+            f"- REPORT IMMEDIATELY TO COURT HOUSE"
+        )
+        post_report_state = replace(
+            session,
+            participants=next_participants,
+            pending_trial=None,
+            phase="boundary_resolution",
+            current_police_leader_user_id=next_police_leader_user_id,
+            current_mob_leader_user_id=next_mob_leader_user_id,
+            latest_public_notice=murder_notice,
+            latest_private_notice_user_id=None,
+            latest_private_notice_message=None,
+            notification_feed=next_notification_feed,
+            pending_gift_offers=[],
+            pending_money_gift_offers=[],
+            pending_sale_offers=[],
+            police_mob_kills_count=session.police_mob_kills_count + police_mob_kill_increment,
+            version=session.version + 1,
+        )
+        if ledger_entries:
+            post_report_state = _append_ledger_entries(post_report_state, ledger_entries)
+        immediate_winner_faction, immediate_winner_user_id = _determine_boundary_winner(post_report_state)
+        if immediate_winner_faction is not None:
+            winner_notice = _build_winner_notice(
+                post_report_state,
+                winner_faction=immediate_winner_faction,
+                winner_user_id=immediate_winner_user_id,
+            )
+            updated = replace(
+                post_report_state,
+                phase="ended",
+                status="ended",
+                ended_at_epoch_seconds=now_epoch_seconds,
+                winning_faction=immediate_winner_faction,
+                winning_user_id=immediate_winner_user_id,
+                latest_public_notice=winner_notice,
+            )
+            self._save_game_session(session, updated)
+            return updated
+
         accused_selection_cursor = [next_police_leader_user_id] if next_police_leader_user_id else []
         silenced_user_ids, next_participants, post_trial_notification_feed = _apply_armed_don_silence_for_upcoming_trial(
             next_participants,
             accused_selection_cursor=accused_selection_cursor,
             moderator_user_id=session.moderator_user_id,
             notification_feed=next_notification_feed,
+            now_epoch_seconds=now_epoch_seconds,
+        )
+        post_trial_notification_feed = _append_notifications(
+            post_trial_notification_feed,
+            _build_leadership_change_notifications(
+                previous_police_leader_user_id=session.current_police_leader_user_id,
+                next_police_leader_user_id=next_police_leader_user_id,
+                previous_mob_leader_user_id=session.current_mob_leader_user_id,
+                next_mob_leader_user_id=next_mob_leader_user_id,
+            ),
             now_epoch_seconds=now_epoch_seconds,
         )
         pending_trial = TrialStateSnapshot(
@@ -469,11 +568,7 @@ class GameplayService(GameplayInboundPort):
             phase=next_phase,
             current_police_leader_user_id=next_police_leader_user_id,
             current_mob_leader_user_id=next_mob_leader_user_id,
-            latest_public_notice=(
-                f"{murdered_participant.username.upper()} WAS MURDERED WITH "
-                f"{'GUN' if _is_gun_attack_classification(command.attack_classification) else 'KNIFE'} "
-                f"- REPORT IMMEDIATELY TO COURT HOUSE"
-            ),
+            latest_public_notice=murder_notice,
             latest_private_notice_user_id=None,
             latest_private_notice_message=None,
             notification_feed=post_trial_notification_feed,
@@ -578,18 +673,15 @@ class GameplayService(GameplayInboundPort):
 
         pending_trial = session.pending_trial
         jury_deadline = pending_trial.vote_deadline_epoch_seconds
-        tamper_deadline = pending_trial.gangster_tamper_vote_deadline_epoch_seconds
         if command.vote_slot == "jury":
             if jury_deadline is None:
                 raise ConflictProblem("Jury voting is not active yet.", code="invalid_state")
             if command.voter_user_id not in pending_trial.jury_user_ids:
                 raise PermissionError("Only assigned jury members can vote.")
-            if command.voter_user_id in pending_trial.silenced_user_ids:
-                raise ConflictProblem("You are silenced and cannot vote during this trial.", code="invalid_state")
         elif command.vote_slot == "tamper":
             if pending_trial.gangster_tamper_actor_user_id != command.voter_user_id:
                 raise PermissionError("Only the Gangster can submit the tamper vote.")
-            if tamper_deadline is None:
+            if pending_trial.gangster_tamper_target_user_id is None:
                 raise ConflictProblem("Tamper voting is not active.", code="invalid_state")
         if any(
             vote.get("user_id") == command.voter_user_id and str(vote.get("vote_slot", "jury")) == command.vote_slot
@@ -822,7 +914,7 @@ class GameplayService(GameplayInboundPort):
                 session.pending_trial,
                 gangster_tamper_target_user_id=command.target_user_id,
                 gangster_tamper_actor_user_id=actor.user_id,
-                gangster_tamper_vote_deadline_epoch_seconds=now_epoch_seconds + GANGSTER_TAMPER_VOTE_TIMEOUT_SECONDS,
+                gangster_tamper_vote_deadline_epoch_seconds=None,
             ),
             notification_feed=_append_notifications(
                 session.notification_feed,
@@ -1780,15 +1872,17 @@ class GameplayService(GameplayInboundPort):
         )
         if no_juror_votes_before_timeout:
             verdict = "innocent"
+            was_hung_jury_mistrial = False
         else:
             guilty_votes = sum(1 for vote in counted_votes if vote.get("vote") == "guilty")
             innocent_votes = len(counted_votes) - guilty_votes
+            was_hung_jury_mistrial = guilty_votes > 0 and guilty_votes == innocent_votes
             verdict = "guilty" if guilty_votes > innocent_votes else "innocent"
         next_pending = replace(
             pending_trial,
             votes=list(pending_trial.votes),
             verdict=verdict,
-            resolution="vote_complete",
+            resolution="hung_jury" if was_hung_jury_mistrial else "vote_complete",
             conviction_correct=None,
             gangster_tamper_target_user_id=None,
             gangster_tamper_actor_user_id=None,
@@ -2008,7 +2102,16 @@ class GameplayService(GameplayInboundPort):
             felon_escape_expires_at_epoch_seconds=(
                 felon_escape_expires_at_epoch_seconds if verdict == "guilty" else session.felon_escape_expires_at_epoch_seconds
             ),
-            notification_feed=next_notification_feed,
+            notification_feed=_append_notifications(
+                next_notification_feed,
+                _build_leadership_change_notifications(
+                    previous_police_leader_user_id=session.current_police_leader_user_id,
+                    next_police_leader_user_id=next_police_leader_user_id,
+                    previous_mob_leader_user_id=session.current_mob_leader_user_id,
+                    next_mob_leader_user_id=next_mob_leader_user_id,
+                ),
+                now_epoch_seconds=now_epoch_seconds,
+            ),
             version=session.version + 1,
         )
         if ledger_entries:
@@ -4253,6 +4356,37 @@ def _resolve_next_leader_user_id(
     return _find_faction_leader_user_id(participants, faction=faction, unavailable_user_ids=unavailable)
 
 
+def _build_leadership_change_notifications(
+    *,
+    previous_police_leader_user_id: str | None,
+    next_police_leader_user_id: str | None,
+    previous_mob_leader_user_id: str | None,
+    next_mob_leader_user_id: str | None,
+) -> list[tuple[str, str]]:
+    notifications: list[tuple[str, str]] = []
+    if (
+        next_police_leader_user_id is not None
+        and next_police_leader_user_id != previous_police_leader_user_id
+    ):
+        notifications.append(
+            (
+                next_police_leader_user_id,
+                "You are now the Acting Chief of Police.",
+            )
+        )
+    if (
+        next_mob_leader_user_id is not None
+        and next_mob_leader_user_id != previous_mob_leader_user_id
+    ):
+        notifications.append(
+            (
+                next_mob_leader_user_id,
+                "You are now the Acting Mob Boss.",
+            )
+        )
+    return notifications
+
+
 def _determine_winning_faction(session: GameDetailsSnapshot) -> str | None:
     participants = session.participants
     alive_police = any(p.life_state == "alive" and p.faction == "Police" for p in participants)
@@ -4260,9 +4394,6 @@ def _determine_winning_faction(session: GameDetailsSnapshot) -> str | None:
     if not alive_police and alive_mob:
         return "Mob"
     if not alive_mob and alive_police:
-        allowed_police_mob_kills = session.total_mob_participants_at_start // 2
-        if session.police_mob_kills_count > allowed_police_mob_kills:
-            return "Mob"
         return "Police"
     return None
 
@@ -4443,7 +4574,12 @@ def _build_trial_outcome_notices(
     participant_name_by_id = _participant_name_by_id(participants)
     accused_username = participant_name_by_id.get(pending_trial.accused_user_id, pending_trial.accused_user_id)
     verdict_label = "guilty" if pending_trial.verdict == "guilty" else "not guilty"
-    notice = f"{accused_username} was found {verdict_label}."
+    is_hung_jury_mistrial = pending_trial.verdict == "innocent" and pending_trial.resolution == "hung_jury"
+    notice = (
+        f"Hung jury. {accused_username} was found not guilty due to mistrial."
+        if is_hung_jury_mistrial
+        else f"{accused_username} was found {verdict_label}."
+    )
     private_notice_user_id: str | None = None
     private_notice_message: str | None = None
     if pending_trial.verdict == "guilty":
@@ -4776,7 +4912,7 @@ def _build_role_starting_loadout(
                 item_id=f"inv-{str(uuid4())[:8]}",
                 classification="gun_tier_1",
                 display_name="Handgun (Tier 1)",
-                image_path="/static/items/defaults/default_gun_tier_1.svg",
+                image_path="/static/items/defaults/default_gun_tier_1.jpg",
                 acquisition_value=150,
                 resale_price=150,
             )
@@ -4791,7 +4927,7 @@ def _build_role_starting_loadout(
                     item_id=f"inv-{str(uuid4())[:8]}",
                     classification=gun_catalog_item.classification,
                     display_name=gun_catalog_item.display_name,
-                    image_path=gun_catalog_item.image_path,
+                    image_path="/static/items/defaults/default_gun_tier_1.jpg",
                     acquisition_value=gun_catalog_item.base_price,
                     resale_price=gun_catalog_item.base_price,
                 )

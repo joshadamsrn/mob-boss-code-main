@@ -109,7 +109,7 @@ class GameplayHtmlContextTests(SimpleTestCase):
         template_source = template_path.read_text()
 
         self.assertIn(
-            "playerJuryOverlay.classList.add(\"d-none\");\n        showPlayerScreen(currentPlayerScreen);\n        if (currentSnapshot) {\n          maybeShowOverlayNotification(currentSnapshot);\n        }",
+            "playerJuryOverlay.classList.add(\"d-none\");\n        showPlayerScreen(currentPlayerScreen);\n        if (currentSnapshot) {\n          updatePlayerActionOverlays(currentSnapshot);\n          maybeShowOverlayNotification(currentSnapshot);\n        }",
             template_source,
         )
 
@@ -170,6 +170,140 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(other_row.role_label, "Hidden")
         self.assertTrue(captured_context["superpower_panel"]["show"])
         self.assertEqual(captured_context["superpower_panel"]["role_name"], "Chief of Police")
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_player_context_applies_inventory_image_fallback_for_blank_image_path(self, mock_render, mock_get_container) -> None:
+        snapshot = replace(
+            _snapshot(),
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                    inventory=[
+                        InventoryItemStateSnapshot(
+                            item_id="inv-gun",
+                            classification="gun_tier_1",
+                            display_name="Handgun (Tier 1)",
+                            image_path="",
+                            acquisition_value=150,
+                            resale_price=150,
+                        )
+                    ],
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+        )
+
+        class _InventoryImageStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return snapshot
+
+        class _InventoryImageStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _InventoryImageStubGameplayInboundPort()
+                self.rooms_inbound_port = None
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _InventoryImageStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-ctx")
+        request.user = self.player
+
+        response = detail(request, game_id="g-ctx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            captured_context["player_inventory_items"][0].image_path,
+            "/static/items/defaults/default_gun_tier_1.jpg",
+        )
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_player_context_normalizes_legacy_tier_one_gun_svg_to_jpg(self, mock_render, mock_get_container) -> None:
+        snapshot = replace(
+            _snapshot(),
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_police",
+                    username="police",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                    inventory=[
+                        InventoryItemStateSnapshot(
+                            item_id="inv-gun",
+                            classification="gun_tier_1",
+                            display_name="Handgun (Tier 1)",
+                            image_path="/static/items/defaults/default_gun_tier_1.svg",
+                            acquisition_value=150,
+                            resale_price=150,
+                        )
+                    ],
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+        )
+
+        class _LegacyGunImageStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return snapshot
+
+        class _LegacyGunImageStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _LegacyGunImageStubGameplayInboundPort()
+                self.rooms_inbound_port = None
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _LegacyGunImageStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-ctx")
+        request.user = self.player
+
+        response = detail(request, game_id="g-ctx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            captured_context["player_inventory_items"][0].image_path,
+            "/static/items/defaults/default_gun_tier_1.jpg",
+        )
 
     @patch("project.mobboss_apps.gameplay.views.time.time", return_value=1000)
     @patch("project.mobboss_apps.gameplay.views.get_container")
@@ -1516,11 +1650,112 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(captured_context["jury_prompt"]["show"])
         self.assertTrue(captured_context["jury_prompt"]["is_silenced"])
-        self.assertFalse(captured_context["jury_prompt"]["can_vote"])
+        self.assertTrue(captured_context["jury_prompt"]["can_vote"])
         self.assertEqual(
             captured_context["jury_prompt"]["silence_notice"],
             "You seem to be afraid to testify at court. You must remain silent during this trial.",
         )
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_trial_voting_context_limits_tamper_only_gangster_to_tamper_vote(self, mock_render, mock_get_container) -> None:
+        tamper_snapshot = GameDetailsSnapshot(
+            game_id="g-tamper-only",
+            room_id="r-tamper-only",
+            moderator_user_id="u_mod",
+            status="in_progress",
+            phase="trial_voting",
+            round_number=1,
+            version=4,
+            launched_at_epoch_seconds=100,
+            ended_at_epoch_seconds=None,
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_gangster",
+                    username="gangster",
+                    faction="Mob",
+                    role_name="Gangster",
+                    rank=3,
+                    life_state="alive",
+                    money_balance=250,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_target",
+                    username="target",
+                    faction="Police",
+                    role_name="Deputy",
+                    rank=2,
+                    life_state="alive",
+                    money_balance=250,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_other",
+                    username="other",
+                    faction="Police",
+                    role_name="Chief of Police",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=250,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_accused",
+                    username="accused",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=200,
+                ),
+            ],
+            catalog=[],
+            pending_trial=TrialStateSnapshot(
+                murdered_user_id="u_dead",
+                murderer_user_id="u_secret",
+                accused_user_id="u_accused",
+                accused_selection_cursor=[],
+                accused_selection_deadline_epoch_seconds=None,
+                jury_user_ids=["u_target", "u_other"],
+                vote_deadline_epoch_seconds=1200,
+                votes=[],
+                verdict=None,
+                conviction_correct=None,
+                resolution=None,
+                gangster_tamper_target_user_id="u_target",
+                gangster_tamper_actor_user_id="u_gangster",
+                gangster_tamper_vote_deadline_epoch_seconds=None,
+            ),
+        )
+
+        class _TamperOnlyStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return tamper_snapshot
+
+        class _TamperOnlyStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _TamperOnlyStubGameplayInboundPort()
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _TamperOnlyStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-tamper-only")
+        request.user = type("U", (), {"is_authenticated": True, "id": "u_gangster", "username": "gangster"})()
+
+        response = detail(request, game_id="g-tamper-only")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(captured_context["jury_prompt"]["show"])
+        self.assertFalse(captured_context["jury_prompt"]["is_juror"])
+        self.assertFalse(captured_context["jury_prompt"]["can_vote"])
+        self.assertFalse(captured_context["jury_prompt"]["waiting_for_moderator"])
+        self.assertTrue(captured_context["jury_prompt"]["show_tamper_vote"])
+        self.assertTrue(captured_context["jury_prompt"]["tamper_can_vote"])
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
@@ -3179,10 +3414,12 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertFalse(captured_context["superpower_panel"]["can_activate"])
         self.assertEqual(captured_context["superpower_panel"]["reveal_state"]["target_username"], "target")
         self.assertEqual(
-            [row["transaction_type_label"] for row in captured_context["superpower_panel"]["reveal_state"]["transaction_rows"]],
-            ["Money Gift", "Sale"],
+            [row["summary_text"] for row in captured_context["superpower_panel"]["reveal_state"]["transaction_rows"]],
+            [
+                "other was gifted $40 from target at 12:15 AM",
+                "target purchased Knife from other at 12:16 AM",
+            ],
         )
-        self.assertTrue(captured_context["superpower_panel"]["reveal_state"]["has_fewer_than_three"])
 
     @patch("project.mobboss_apps.gameplay.views.time.time", return_value=1000)
     @patch("project.mobboss_apps.gameplay.views.get_container")
@@ -3277,8 +3514,8 @@ class GameplayHtmlContextTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            captured_context["superpower_panel"]["reveal_state"]["transaction_rows"][0]["transaction_type_label"],
-            "Stolen Item",
+            captured_context["superpower_panel"]["reveal_state"]["transaction_rows"][0]["summary_text"],
+            "smuggler stole Knife from target at 12:16 AM",
         )
 
     @patch("project.mobboss_apps.gameplay.views.time.time", return_value=1000)
