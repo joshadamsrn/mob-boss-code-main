@@ -5,6 +5,7 @@ import shutil
 import time
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -150,6 +151,37 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertIn("Knife Hobo", role_names)
         self.assertIn("Merchant", role_names)
 
+    def test_larger_games_always_include_required_anchor_roles_and_random_extra_merchant_roles(self) -> None:
+        for index in range(1, 11):
+            self.service.join_room(
+                JoinRoomCommand(
+                    room_id=self.room_id,
+                    user_id=f"u_{index}",
+                    username=f"p{index}",
+                )
+            )
+
+        details = self.service.get_room_details(self.room_id)
+        participant_roles = [
+            member.assigned_role
+            for member in details.members
+            if member.membership_status == "joined"
+            and member.user_id != "u_mod"
+            and member.assigned_role is not None
+        ]
+        role_names = {role.role_name for role in participant_roles}
+        merchant_role_names = [role.role_name for role in participant_roles if role.faction == "Merchant"]
+
+        self.assertIn("Chief of Police", role_names)
+        self.assertIn("Mob Boss", role_names)
+        self.assertIn("Knife Hobo", role_names)
+        self.assertIn("Merchant", role_names)
+        self.assertEqual(len(merchant_role_names), 2)
+        self.assertGreaterEqual(
+            len([role_name for role_name in merchant_role_names if role_name in {"Arms Dealer", "Smuggler", "Gun Runner", "Supplier"}]),
+            1,
+        )
+
     def test_only_moderator_can_assign_role(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_1", username="p1"))
 
@@ -194,6 +226,13 @@ class RoomMemoryServiceTests(unittest.TestCase):
     def test_manual_role_assignment_rejects_duplicate_unique_role(self) -> None:
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_1", username="p1"))
         self.service.join_room(JoinRoomCommand(room_id=self.room_id, user_id="u_2", username="p2"))
+
+        details = self.service.get_room_details(self.room_id)
+        members = [
+            replace(member, assigned_role=None) if member.user_id == "u_2" else member
+            for member in details.members
+        ]
+        self.repo.save_room(replace(details, members=members))
 
         self.service.assign_room_role(
             AssignRoomRoleCommand(
@@ -496,7 +535,8 @@ class RoomMemoryServiceTests(unittest.TestCase):
         self.assertGreaterEqual(len(start_command.catalog), MIN_REQUIRED_ROOM_ITEMS)
         self.assertEqual(service.get_room_details(room.room_id).status, "in_progress")
 
-    def test_launch_preserves_lobby_role_assignments_for_targeted_role_testing(self) -> None:
+    @patch("project.mobboss_apps.rooms.src.room_service.random.Random.shuffle", side_effect=lambda seq: seq.reverse())
+    def test_launch_reshuffles_roles_when_game_starts(self, _mock_shuffle) -> None:
         repo = MemoryRoomsRepository()
         gameplay = _StubGameplayInboundPort(game_id="game-r-pinned")
         service = RoomsService(repo, gameplay_inbound_port=gameplay)
@@ -533,12 +573,8 @@ class RoomMemoryServiceTests(unittest.TestCase):
 
         start_command = gameplay.commands[0]
         participants_by_user_id = {participant.user_id: participant for participant in start_command.participants}
-        self.assertEqual(participants_by_user_id["u_3"].role_name, "Kingpin")
-        self.assertEqual(participants_by_user_id["u_3"].faction, "Mob")
-        self.assertEqual(participants_by_user_id["u_3"].rank, 4)
-        self.assertEqual(participants_by_user_id["u_4"].role_name, "Detective")
-        self.assertEqual(participants_by_user_id["u_4"].faction, "Police")
-        self.assertEqual(participants_by_user_id["u_4"].rank, 7)
+        self.assertNotEqual(participants_by_user_id["u_3"].role_name, "Kingpin")
+        self.assertNotEqual(participants_by_user_id["u_4"].role_name, "Detective")
 
     def test_launch_requires_secret_word_before_launch(self) -> None:
         _join_members_from_fixture(self.service, self.room_id, "join_members_1_to_7.json")

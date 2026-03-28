@@ -243,6 +243,7 @@ class RoomsService(RoomsInboundPort):
         idx = self._find_member_index(members, command.target_user_id)
         if idx < 0 or members[idx].membership_status != "joined":
             raise ValueError("Target must be a joined room member.")
+        target_member = members[idx]
         conflicting_member = next(
             (
                 member
@@ -255,9 +256,17 @@ class RoomsService(RoomsInboundPort):
             None,
         )
         if conflicting_member is not None:
-            raise ValueError(f"{command.role_name} is already assigned to {conflicting_member.username}.")
+            if target_member.assigned_role is None:
+                raise ValueError(f"{command.role_name} is already assigned to {conflicting_member.username}.")
+            conflicting_idx = self._find_member_index(members, conflicting_member.user_id)
+            if conflicting_idx < 0:
+                raise ValueError("Conflicting room member not found.")
+            members[conflicting_idx] = replace(
+                members[conflicting_idx],
+                assigned_role=target_member.assigned_role,
+            )
         members[idx] = replace(
-            members[idx],
+            target_member,
             assigned_role=RoomRoleAssignmentSnapshot(
                 faction=command.faction,
                 role_name=command.role_name,
@@ -363,8 +372,11 @@ class RoomsService(RoomsInboundPort):
             raise ValueError("At least one central supply item must be saved before launch.")
         if active_items < MIN_REQUIRED_ROOM_ITEMS:
             raise ValueError(f"At least {MIN_REQUIRED_ROOM_ITEMS} active catalog items are required to launch.")
-        # Preserve the lobby role mapping at launch so moderator-selected
-        # assignments remain stable for targeted role testing.
+        room = self._assign_roles_for_joined_members(
+            room,
+            shuffle=True,
+            seed=self._now_epoch_seconds(),
+        )
         room = _apply_launch_catalog_pricing(room, participant_count=participant_count)
         if self._gameplay_inbound_port is None:
             game_id = self._repository.reserve_game_id(room.room_id)
