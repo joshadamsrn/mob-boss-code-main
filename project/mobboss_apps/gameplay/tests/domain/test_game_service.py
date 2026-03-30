@@ -60,7 +60,7 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     SubmitTrialVoteCommand,
     TrialStateSnapshot,
 )
-from project.mobboss_apps.gameplay.src.game_service import GameplayService  # noqa: E402
+from project.mobboss_apps.gameplay.src.game_service import GameplayService, _select_trial_jury_user_ids  # noqa: E402
 from project.mobboss_apps.mobboss.exceptions import ConflictProblem  # noqa: E402
 
 
@@ -143,6 +143,65 @@ class GameplayServiceTests(unittest.TestCase):
 
         fetched = self.service.get_game_details(snapshot.game_id)
         self.assertEqual(fetched.game_id, snapshot.game_id)
+
+    def test_trial_jury_selection_uses_all_eligible_players_when_three_or_fewer(self) -> None:
+        participants = [
+            ParticipantStateSnapshot(
+                user_id=f"u_{index}",
+                username=f"player{index}",
+                faction="Police",
+                role_name="Cop",
+                rank=index,
+                life_state="alive",
+                money_balance=100,
+            )
+            for index in range(4)
+        ]
+
+        jury_user_ids = _select_trial_jury_user_ids(
+            participants,
+            accused_user_id="u_0",
+            randomization_salt="jury-test",
+        )
+
+        self.assertEqual(len(jury_user_ids), 3)
+        self.assertCountEqual(jury_user_ids, ["u_1", "u_2", "u_3"])
+
+    def test_trial_jury_selection_uses_configured_alive_player_brackets(self) -> None:
+        expected_sizes = {
+            4: 3,
+            8: 3,
+            9: 5,
+            15: 5,
+            16: 7,
+            20: 7,
+            21: 9,
+            25: 9,
+        }
+
+        for eligible_count, expected_size in expected_sizes.items():
+            with self.subTest(eligible_count=eligible_count):
+                participants = [
+                    ParticipantStateSnapshot(
+                        user_id=f"u_{index}",
+                        username=f"player{index}",
+                        faction="Police",
+                        role_name="Cop",
+                        rank=index,
+                        life_state="alive",
+                        money_balance=100,
+                    )
+                    for index in range(eligible_count + 1)
+                ]
+
+                jury_user_ids = _select_trial_jury_user_ids(
+                    participants,
+                    accused_user_id="u_0",
+                    randomization_salt=f"jury-test-{eligible_count}",
+                )
+
+                self.assertEqual(len(jury_user_ids), expected_size)
+                self.assertNotIn("u_0", jury_user_ids)
 
     def test_start_session_sets_last_progress_timestamp(self) -> None:
         command = _build_start_session_command("start_session_information.json")

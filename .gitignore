@@ -36,3 +36,6 @@ Thumbs.db
 
 # Docker
 *.pid
+
+# Local planning/reference files
+starting_money_by_player_count_and_role.xlsx

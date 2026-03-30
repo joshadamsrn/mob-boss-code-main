@@ -5002,15 +5002,7 @@ def _select_trial_jury_user_ids(
     ]
     if not eligible:
         return []
-    if len(eligible) <= DEFAULT_WEIGHTS.jury_min_size:
-        ordered = sorted(eligible, key=lambda participant: _jury_randomized_sort_key(participant.user_id, randomization_salt))
-        return [participant.user_id for participant in ordered]
-
-    target_count = max(1, int(len(eligible) * DEFAULT_WEIGHTS.jury_fraction_of_living_players))
-    target_count = max(target_count, min(DEFAULT_WEIGHTS.jury_min_size, len(eligible)))
-    target_count = min(target_count, len(eligible))
-    if DEFAULT_WEIGHTS.jury_must_be_odd and target_count > 1 and target_count % 2 == 0:
-        target_count -= 1
+    target_count = _target_trial_jury_size(len(eligible))
     previous_jury_set = set(previous_jury_user_ids or [])
     ordered = sorted(
         eligible,
@@ -5020,6 +5012,18 @@ def _select_trial_jury_user_ids(
         ),
     )
     return [participant.user_id for participant in ordered[:target_count]]
+
+
+def _target_trial_jury_size(eligible_player_count: int) -> int:
+    if eligible_player_count <= 3:
+        return eligible_player_count
+    if eligible_player_count <= 8:
+        return 3
+    if eligible_player_count <= 15:
+        return 5
+    if eligible_player_count <= 20:
+        return 7
+    return 9
 
 
 def _jury_randomized_sort_key(user_id: str, randomization_salt: str) -> str:
