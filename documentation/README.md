@@ -1,5 +1,6 @@
 # Documentation Layout
 
+- `documentation/deployment/`: operational runbooks for production deployment and recovery.
 - `documentation/discussion/`: evolving design discussion, decisions, open questions, and working notes.
 - `documentation/features/`: formal feature specs that define expected behavior for implementation and testing.
 
