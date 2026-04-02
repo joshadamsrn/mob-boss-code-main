@@ -1445,6 +1445,45 @@ def _role_ability_metadata(role_name: str) -> dict[str, str]:
     }
 
 
+def _role_objective_text(*, faction: str, role_name: str) -> str:
+    if faction == "Police":
+        return (
+            f"As {role_name}, help the Police eliminate all Mob players. "
+            "Use information, coordination, and trials carefully, and avoid reckless killing."
+        )
+    if faction == "Mob":
+        return (
+            f"As {role_name}, help the Mob eliminate all Police players while protecting your identity. "
+            "Work quietly, stay hidden, and use the Mob secret word carefully."
+        )
+    if faction == "Merchant":
+        return (
+            f"As {role_name}, play for yourself and reach your money goal before another faction wins. "
+            "Use trades, timing, and survival to stay in the game long enough to cash out."
+        )
+    return f"As {role_name}, learn your win condition and use your role well."
+
+
+def _build_role_intro_panel(current_participant) -> dict[str, object]:
+    if current_participant is None or current_participant.life_state != "alive":
+        return {"show": False}
+    role_name = str(current_participant.role_name or "").strip()
+    if not role_name:
+        return {"show": False}
+    metadata = _role_ability_metadata(role_name)
+    return {
+        "show": True,
+        "role_name": role_name,
+        "image_url": _role_ability_image_url(role_name),
+        "objective_text": _role_objective_text(
+            faction=str(current_participant.faction or "").strip(),
+            role_name=role_name,
+        ),
+        "ability_name": str(metadata.get("ability_name", "Role Ability") or "Role Ability"),
+        "ability_summary": str(metadata.get("description", "") or "").strip(),
+    }
+
+
 def _active_protective_custody_state(
     session,
     *,
@@ -2038,6 +2077,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         if current_participant is not None:
             player_role_label = _participant_role_label(session, current_participant.user_id, reveal_role=True)
         player_role_image_url = _role_ability_image_url(player_role_name) if player_role_name else ""
+        role_intro_panel = _build_role_intro_panel(current_participant)
         can_self_report_murder = (
             not page.is_moderator
             and current_participant is not None
@@ -2245,6 +2285,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "player_role_name": player_role_name,
                 "player_role_label": player_role_label,
                 "player_role_image_url": player_role_image_url,
+                "role_intro_panel": role_intro_panel,
                 "can_self_report_murder": can_self_report_murder,
                 "self_report_murderer_rows": self_report_murderer_rows,
                 "player_gift_targets": player_gift_targets,

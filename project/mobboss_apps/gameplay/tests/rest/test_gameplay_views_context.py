@@ -135,6 +135,15 @@ class GameplayHtmlContextTests(SimpleTestCase):
         )
         self.assertNotIn("markNotificationSeen(key, message);", template_source)
 
+    def test_detail_template_includes_role_intro_screen_controls(self) -> None:
+        template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
+        template_source = template_path.read_text()
+
+        self.assertIn('data-screen="role-intro"', template_source)
+        self.assertIn('data-dismiss-role-intro="true"', template_source)
+        self.assertIn('const roleIntroSeenStorageKey = `game:${gameId}:role-intro-seen:${viewerUserId}`;', template_source)
+        self.assertIn('if (!initialGameEnded && hasRoleIntroScreen && !hasSeenRoleIntro()) {', template_source)
+
     def test_player_inventory_template_uses_single_submit_actions(self) -> None:
         template_path = (
             REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "_player_inventory_card.html"
@@ -181,6 +190,10 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(other_row.role_label, "Hidden")
         self.assertTrue(captured_context["superpower_panel"]["show"])
         self.assertEqual(captured_context["superpower_panel"]["role_name"], "Chief of Police")
+        self.assertTrue(captured_context["role_intro_panel"]["show"])
+        self.assertEqual(captured_context["role_intro_panel"]["role_name"], "Chief of Police")
+        self.assertIn("help the Police eliminate all Mob players", captured_context["role_intro_panel"]["objective_text"])
+        self.assertEqual(captured_context["role_intro_panel"]["ability_name"], "Police Authority")
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")
@@ -350,6 +363,62 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(captured_context["pending_trial_murdered_username"], "mob")
         self.assertEqual(captured_context["pending_trial_current_responder_username"], "police")
+
+    @patch("project.mobboss_apps.gameplay.views.get_container")
+    @patch("project.mobboss_apps.gameplay.views.render")
+    def test_player_context_builds_merchant_role_intro_copy(self, mock_render, mock_get_container) -> None:
+        snapshot = replace(
+            _snapshot(),
+            participants=[
+                ParticipantStateSnapshot(
+                    user_id="u_merchant",
+                    username="merchant",
+                    faction="Merchant",
+                    role_name="Merchant",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+                ParticipantStateSnapshot(
+                    user_id="u_mob",
+                    username="mob",
+                    faction="Mob",
+                    role_name="Mob Boss",
+                    rank=1,
+                    life_state="alive",
+                    money_balance=300,
+                ),
+            ],
+        )
+
+        class _MerchantIntroStubGameplayInboundPort:
+            def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
+                return snapshot
+
+        class _MerchantIntroStubContainer:
+            def __init__(self) -> None:
+                self.gameplay_inbound_port = _MerchantIntroStubGameplayInboundPort()
+                self.rooms_inbound_port = None
+                self.room_state_poll_interval_seconds = 5
+                self.room_dev_mode = False
+
+        mock_get_container.return_value = _MerchantIntroStubContainer()
+        captured_context = {}
+
+        def _fake_render(_request, _template_name, context):
+            captured_context.update(context)
+            return HttpResponse("ok")
+
+        mock_render.side_effect = _fake_render
+        request = self.factory.get("/games/g-ctx")
+        request.user = type("U", (), {"is_authenticated": True, "id": "u_merchant", "username": "merchant"})()
+
+        response = detail(request, game_id="g-ctx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured_context["role_intro_panel"]["role_name"], "Merchant")
+        self.assertIn("reach your money goal", captured_context["role_intro_panel"]["objective_text"])
+        self.assertEqual(captured_context["role_intro_panel"]["ability_name"], "Wholesale Order")
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")

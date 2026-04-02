@@ -48,13 +48,32 @@ def _resolve_active_moderated_game_for_user(user_id: str):
     return None
 
 
+def _resolve_return_target(request: HttpRequest, *, user_id: str) -> tuple[str, str]:
+    active_room = _resolve_active_moderated_game_for_user(user_id)
+    request_session = getattr(request, "session", None)
+    active_game_id = str(request_session.get("active_game_id", "")).strip() if request_session is not None else ""
+    active_game_status = ""
+    if not active_game_id and active_room is not None and active_room.launched_game_id:
+        active_game_id = active_room.launched_game_id
+    if active_game_id:
+        try:
+            container = get_container()
+            gameplay_inbound = container.gameplay_inbound_port
+            session = gameplay_inbound.get_game_details(active_game_id)
+            active_game_status = str(session.status or "").strip()
+        except Exception:
+            active_game_status = ""
+    if active_game_id and active_game_status != "ended":
+        return (f"/games/{active_game_id}/", "Return to Game")
+    return ("/", "Return to Lobby")
+
+
 @login_required(login_url="/auth/")
 def options(request: HttpRequest) -> HttpResponse:
     user_id = str(request.user.id or request.user.username)
     active_room = _resolve_active_moderated_game_for_user(user_id)
     request_session = getattr(request, "session", None)
     active_game_id = str(request_session.get("active_game_id", "")).strip() if request_session is not None else ""
-    active_game_status = ""
     if not active_game_id and active_room is not None and active_room.launched_game_id:
         active_game_id = active_room.launched_game_id
     moderator_report_death_players = []
@@ -64,7 +83,6 @@ def options(request: HttpRequest) -> HttpResponse:
             container = get_container()
             gameplay_inbound = container.gameplay_inbound_port
             session = gameplay_inbound.get_game_details(active_game_id)
-            active_game_status = str(session.status or "").strip()
             if active_room is not None and active_room.launched_game_id == active_game_id:
                 moderator_report_death_players = sorted(
                     [
@@ -81,8 +99,7 @@ def options(request: HttpRequest) -> HttpResponse:
                 )
         except Exception:
             pass
-    return_target_href = f"/games/{active_game_id}/" if active_game_id and active_game_status != "ended" else "/"
-    return_target_label = "Return to Game" if active_game_id and active_game_status != "ended" else "Return to Lobby"
+    return_target_href, return_target_label = _resolve_return_target(request, user_id=user_id)
     return render(
         request,
         "web/options.html",
@@ -92,6 +109,20 @@ def options(request: HttpRequest) -> HttpResponse:
             "can_kill_game": active_room is not None and bool(active_room.launched_game_id),
             "can_report_death": can_report_death,
             "moderator_report_death_players": moderator_report_death_players,
+            "return_target_href": return_target_href,
+            "return_target_label": return_target_label,
+        },
+    )
+
+
+@login_required(login_url="/auth/")
+def how_to_play(request: HttpRequest) -> HttpResponse:
+    user_id = str(request.user.id or request.user.username)
+    return_target_href, return_target_label = _resolve_return_target(request, user_id=user_id)
+    return render(
+        request,
+        "web/how_to_play.html",
+        {
             "return_target_href": return_target_href,
             "return_target_label": return_target_label,
         },

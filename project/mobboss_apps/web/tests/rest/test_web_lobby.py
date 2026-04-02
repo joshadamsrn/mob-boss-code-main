@@ -12,7 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from project.mobboss_apps.rooms.ports.internal import RoomDetailsSnapshot, RoomSnapshot  # noqa: E402
-from project.mobboss_apps.web.views import advance_accused_timeout, index, moderator_report_death, options  # noqa: E402
+from project.mobboss_apps.web.views import advance_accused_timeout, how_to_play, index, moderator_report_death, options  # noqa: E402
 
 
 class _StubRoomsInboundPort:
@@ -58,6 +58,17 @@ class WebLobbyViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<form method="post" action="/rooms/create"', html=False)
         self.assertContains(response, "Create Room")
+
+    @patch("project.mobboss_apps.web.views.get_container", return_value=_StubContainer())
+    def test_lobby_renders_how_to_play_link(self, _mock_get_container) -> None:
+        request = self.factory.get("/")
+        request.user = self.user
+
+        response = index(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/how-to-play/"', html=False)
+        self.assertContains(response, "How to Play Mob Boss")
 
 
 class _StubRoomsInboundForOptions:
@@ -226,6 +237,40 @@ class WebOptionsViewTests(SimpleTestCase):
         self.assertEqual(command.murderer_user_id, "u_p2")
         self.assertEqual(command.attack_classification, "knife")
         self.assertEqual(command.reported_by_user_id, "u_mod")
+
+
+class WebHowToPlayViewTests(SimpleTestCase):
+    def setUp(self) -> None:
+        self.factory = RequestFactory()
+        self.moderator = type("StubUser", (), {"is_authenticated": True, "id": "u_mod", "username": "moderator"})()
+
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_how_to_play_shows_mobile_friendly_copy(self, mock_get_container) -> None:
+        mock_get_container.return_value = _StubContainerForOptions(moderator_user_id="u_mod")
+        request = self.factory.get("/how-to-play/")
+        request.user = self.moderator
+        request.session = {}
+
+        response = how_to_play(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "How to Play Mob Boss")
+        self.assertContains(response, "A game of secrecy, strategy, money, and survival.")
+        self.assertContains(response, "Mob players also share a secret word")
+        self.assertContains(response, "Trust carefully.")
+
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_how_to_play_returns_to_active_game_when_game_is_in_progress(self, mock_get_container) -> None:
+        mock_get_container.return_value = _StubContainerForOptions(moderator_user_id="u_mod")
+        request = self.factory.get("/how-to-play/")
+        request.user = self.moderator
+        request.session = {"active_game_id": "g-1"}
+
+        response = how_to_play(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/games/g-1/"', html=False)
+        self.assertContains(response, "Return to Game")
 
 
 if __name__ == "__main__":
