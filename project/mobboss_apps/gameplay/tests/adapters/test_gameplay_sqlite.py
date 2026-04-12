@@ -17,6 +17,8 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     GameDetailsSnapshot,
     LedgerEntrySnapshot,
     LedgerStateSnapshot,
+    ModeratorChatMessageSnapshot,
+    ModeratorChatThreadSnapshot,
     ParticipantPowerStateSnapshot,
     ParticipantStateSnapshot,
     PlayerTransactionSnapshot,
@@ -181,6 +183,35 @@ class GameplaySqliteAdapterTests(unittest.TestCase):
                     created_at_epoch_seconds=222,
                     money_amount=50,
                 )
+            ],
+            moderator_chat_version=2,
+            moderator_chat_threads=[
+                ModeratorChatThreadSnapshot(
+                    player_user_id="u_police",
+                    unread_for_player_count=1,
+                    unread_for_moderator_count=0,
+                    messages=[
+                        ModeratorChatMessageSnapshot(
+                            message_id="chat-1",
+                            sender_user_id="u_mod",
+                            body="Stay ready.",
+                            created_at_epoch_seconds=240,
+                        )
+                    ],
+                ),
+                ModeratorChatThreadSnapshot(
+                    player_user_id="u_mob",
+                    unread_for_player_count=0,
+                    unread_for_moderator_count=1,
+                    messages=[
+                        ModeratorChatMessageSnapshot(
+                            message_id="chat-2",
+                            sender_user_id="u_mob",
+                            body="Need moderator.",
+                            created_at_epoch_seconds=241,
+                        )
+                    ],
+                ),
             ],
             felon_escape_user_id="u_mob",
             felon_escape_expires_at_epoch_seconds=555,

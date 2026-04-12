@@ -25,10 +25,15 @@ from .internal import (
     ActivateUnderBossJuryOverrideCommand,
     GiveMoneyCommand,
     KillGameCommand,
+    MarkModeratorChatReadCommand,
+    ModeratorAddFundsCommand,
+    ModeratorTransferFundsCommand,
+    ModeratorTransferInventoryItemCommand,
     OfferGiftItemCommand,
     RespondMoneyGiftOfferCommand,
     RespondGiftOfferCommand,
     RespondSaleOfferCommand,
+    SendModeratorChatMessageCommand,
     SellInventoryItemCommand,
     SellInventoryToSupplyCommand,
     BuyFromSupplyCommand,
@@ -158,5 +163,22 @@ class GameplayInboundPort(Protocol):
     def give_money(self, command: GiveMoneyCommand) -> GameDetailsSnapshot:
         ...
 
+    def moderator_add_funds(self, command: ModeratorAddFundsCommand) -> GameDetailsSnapshot:
+        ...
+
+    def moderator_transfer_funds(self, command: ModeratorTransferFundsCommand) -> GameDetailsSnapshot:
+        ...
+
+    def moderator_transfer_inventory_item(
+        self, command: ModeratorTransferInventoryItemCommand
+    ) -> GameDetailsSnapshot:
+        ...
+
     def respond_money_gift_offer(self, command: RespondMoneyGiftOfferCommand) -> GameDetailsSnapshot:
+        ...
+
+    def send_moderator_chat_message(self, command: SendModeratorChatMessageCommand) -> GameDetailsSnapshot:
+        ...
+
+    def mark_moderator_chat_read(self, command: MarkModeratorChatReadCommand) -> GameDetailsSnapshot:
         ...

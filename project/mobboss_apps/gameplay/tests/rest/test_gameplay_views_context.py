@@ -26,6 +26,7 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     TrialStateSnapshot,
 )
 from project.mobboss_apps.gameplay.views import (  # noqa: E402
+    _resolve_action_user_id,
     activate_deputy_protective_custody,
     activate_gangster_tamper,
     activate_kingpin_reduce_clock,
@@ -99,6 +100,11 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.container = _StubContainer()
         self.player = type("U", (), {"is_authenticated": True, "id": "u_police", "username": "police"})()
         self.moderator = type("U", (), {"is_authenticated": True, "id": "u_mod", "username": "moderator"})()
+        self.dev_moderator = type(
+            "U",
+            (),
+            {"is_authenticated": True, "id": "u_dev", "username": "devmode", "is_dev_tools_user": True},
+        )()
 
     def test_detail_template_defers_phone_notifications_while_blocking_overlay_is_visible(self) -> None:
         template_path = REPO_ROOT / "project" / "mobboss_apps" / "gameplay" / "templates" / "gameplay" / "detail.html"
@@ -194,6 +200,15 @@ class GameplayHtmlContextTests(SimpleTestCase):
         self.assertEqual(captured_context["role_intro_panel"]["role_name"], "Chief of Police")
         self.assertIn("help the Police eliminate all Mob players", captured_context["role_intro_panel"]["objective_text"])
         self.assertEqual(captured_context["role_intro_panel"]["ability_name"], "Police Authority")
+
+    def test_dev_tools_user_can_resolve_simulated_action_user_when_room_dev_mode_disabled(self) -> None:
+        request = self.factory.post("/games/g-ctx/action", data={"as_user_id": "u_mob"})
+        request.user = self.dev_moderator
+        snapshot = replace(_snapshot(), moderator_user_id="u_dev")
+
+        resolved_user_id = _resolve_action_user_id(request, session=snapshot, dev_mode_enabled=False)
+
+        self.assertEqual(resolved_user_id, "u_mob")
 
     @patch("project.mobboss_apps.gameplay.views.get_container")
     @patch("project.mobboss_apps.gameplay.views.render")

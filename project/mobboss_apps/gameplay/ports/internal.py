@@ -16,6 +16,7 @@ LedgerEntryKind = Literal[
     "participant_sale",
     "supplier_acquire_cut",
     "money_gift",
+    "moderator_adjustment",
     "street_thug_steal",
     "gun_runner_charisma_bonus",
     "murder_transfer",
@@ -342,11 +343,57 @@ class GiveMoneyCommand:
 
 
 @dataclass(frozen=True)
+class ModeratorAddFundsCommand:
+    game_id: str
+    requested_by_user_id: str
+    recipient_user_id: str
+    amount: int
+    expected_version: int
+
+
+@dataclass(frozen=True)
+class ModeratorTransferFundsCommand:
+    game_id: str
+    requested_by_user_id: str
+    from_user_id: str
+    to_user_id: str
+    amount: int
+    expected_version: int
+
+
+@dataclass(frozen=True)
+class ModeratorTransferInventoryItemCommand:
+    game_id: str
+    requested_by_user_id: str
+    from_user_id: str
+    to_user_id: str
+    inventory_item_id: str
+    expected_version: int
+
+
+@dataclass(frozen=True)
 class RespondMoneyGiftOfferCommand:
     game_id: str
     receiver_user_id: str
     money_gift_offer_id: str
     accept: bool
+    expected_version: int
+
+
+@dataclass(frozen=True)
+class SendModeratorChatMessageCommand:
+    game_id: str
+    sender_user_id: str
+    thread_user_id: str
+    message_text: str
+    expected_version: int
+
+
+@dataclass(frozen=True)
+class MarkModeratorChatReadCommand:
+    game_id: str
+    viewer_user_id: str
+    thread_user_id: str
     expected_version: int
 
 
@@ -514,6 +561,22 @@ class CatalogItemStateSnapshot:
 
 
 @dataclass(frozen=True)
+class ModeratorChatMessageSnapshot:
+    message_id: str
+    sender_user_id: str
+    body: str
+    created_at_epoch_seconds: int
+
+
+@dataclass(frozen=True)
+class ModeratorChatThreadSnapshot:
+    player_user_id: str
+    unread_for_player_count: int = 0
+    unread_for_moderator_count: int = 0
+    messages: list[ModeratorChatMessageSnapshot] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class GameDetailsSnapshot:
     game_id: str
     room_id: str
@@ -548,6 +611,8 @@ class GameDetailsSnapshot:
     asset_freeze_user_id: str | None = None
     asset_freeze_by_user_id: str | None = None
     asset_freeze_expires_at_epoch_seconds: int | None = None
+    moderator_chat_version: int = 0
+    moderator_chat_threads: list[ModeratorChatThreadSnapshot] = field(default_factory=list)
     sergeant_capture_user_id: str | None = None
     sergeant_capture_by_user_id: str | None = None
     sergeant_capture_expires_at_epoch_seconds: int | None = None

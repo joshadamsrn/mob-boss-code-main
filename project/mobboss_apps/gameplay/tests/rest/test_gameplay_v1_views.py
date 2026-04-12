@@ -15,6 +15,8 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     GameDetailsSnapshot,
     GiftOfferSnapshot,
     InventoryItemStateSnapshot,
+    ModeratorChatMessageSnapshot,
+    ModeratorChatThreadSnapshot,
     MoneyGiftOfferSnapshot,
     NotificationEventSnapshot,
     ParticipantStateSnapshot,
@@ -26,11 +28,16 @@ from project.mobboss_apps.gameplay.v1_views import (  # noqa: E402
     BuyFromSupplyView,
     GiveMoneyView,
     GameDetailView,
+    MarkModeratorChatReadView,
+    ModeratorAddFundsView,
+    ModeratorTransferFundsView,
+    ModeratorTransferInventoryItemView,
     OfferGiftItemView,
     ReportDeathView,
     RespondGiftOfferView,
     RespondMoneyGiftOfferView,
     RespondSaleOfferView,
+    SendModeratorChatMessageView,
     SellInventoryItemView,
     SellInventoryToSupplyView,
     SetInventoryResalePriceView,
@@ -71,6 +78,35 @@ def _game_snapshot() -> GameDetailsSnapshot:
         ],
         catalog=[],
         pending_trial=None,
+        moderator_chat_version=2,
+        moderator_chat_threads=[
+            ModeratorChatThreadSnapshot(
+                player_user_id="u_p1",
+                unread_for_player_count=1,
+                unread_for_moderator_count=0,
+                messages=[
+                    ModeratorChatMessageSnapshot(
+                        message_id="chat-1",
+                        sender_user_id="u_mod",
+                        body="Need your answer.",
+                        created_at_epoch_seconds=105,
+                    )
+                ],
+            ),
+            ModeratorChatThreadSnapshot(
+                player_user_id="u_p2",
+                unread_for_player_count=0,
+                unread_for_moderator_count=1,
+                messages=[
+                    ModeratorChatMessageSnapshot(
+                        message_id="chat-2",
+                        sender_user_id="u_p2",
+                        body="Moderator please respond.",
+                        created_at_epoch_seconds=106,
+                    )
+                ],
+            ),
+        ],
     )
 
 
@@ -86,7 +122,12 @@ class _StubGameplayInboundPort:
         self.gift_offer_commands = []
         self.gift_response_commands = []
         self.give_money_commands = []
+        self.moderator_add_funds_commands = []
+        self.moderator_transfer_funds_commands = []
+        self.moderator_transfer_inventory_item_commands = []
         self.respond_money_gift_offer_commands = []
+        self.send_moderator_chat_commands = []
+        self.mark_moderator_chat_read_commands = []
 
     def get_game_details(self, game_id: str) -> GameDetailsSnapshot:
         return self.snapshot
@@ -196,14 +237,91 @@ class _StubGameplayInboundPort:
         self.give_money_commands.append(command)
         return self.snapshot
 
+    def moderator_add_funds(self, command) -> GameDetailsSnapshot:
+        self.moderator_add_funds_commands.append(command)
+        return self.snapshot
+
+    def moderator_transfer_funds(self, command) -> GameDetailsSnapshot:
+        self.moderator_transfer_funds_commands.append(command)
+        return self.snapshot
+
+    def moderator_transfer_inventory_item(self, command) -> GameDetailsSnapshot:
+        self.moderator_transfer_inventory_item_commands.append(command)
+        return self.snapshot
+
     def respond_money_gift_offer(self, command) -> GameDetailsSnapshot:
         self.respond_money_gift_offer_commands.append(command)
+        return self.snapshot
+
+    def send_moderator_chat_message(self, command) -> GameDetailsSnapshot:
+        self.send_moderator_chat_commands.append(command)
+        threads = []
+        for thread in self.snapshot.moderator_chat_threads:
+            if thread.player_user_id != command.thread_user_id:
+                threads.append(thread)
+                continue
+            threads.append(
+                ModeratorChatThreadSnapshot(
+                    player_user_id=thread.player_user_id,
+                    unread_for_player_count=(
+                        thread.unread_for_player_count + 1 if command.sender_user_id == self.snapshot.moderator_user_id else 0
+                    ),
+                    unread_for_moderator_count=(
+                        0 if command.sender_user_id == self.snapshot.moderator_user_id else thread.unread_for_moderator_count + 1
+                    ),
+                    messages=[
+                        *thread.messages,
+                        ModeratorChatMessageSnapshot(
+                            message_id="chat-new",
+                            sender_user_id=command.sender_user_id,
+                            body=command.message_text,
+                            created_at_epoch_seconds=120,
+                        ),
+                    ],
+                )
+            )
+        self.snapshot = GameDetailsSnapshot(
+            **{
+                **self.snapshot.__dict__,
+                "moderator_chat_version": self.snapshot.moderator_chat_version + 1,
+                "moderator_chat_threads": threads,
+            }
+        )
+        return self.snapshot
+
+    def mark_moderator_chat_read(self, command) -> GameDetailsSnapshot:
+        self.mark_moderator_chat_read_commands.append(command)
+        threads = []
+        for thread in self.snapshot.moderator_chat_threads:
+            if thread.player_user_id != command.thread_user_id:
+                threads.append(thread)
+                continue
+            threads.append(
+                ModeratorChatThreadSnapshot(
+                    player_user_id=thread.player_user_id,
+                    unread_for_player_count=(
+                        0 if command.viewer_user_id == thread.player_user_id else thread.unread_for_player_count
+                    ),
+                    unread_for_moderator_count=(
+                        0 if command.viewer_user_id == self.snapshot.moderator_user_id else thread.unread_for_moderator_count
+                    ),
+                    messages=list(thread.messages),
+                )
+            )
+        self.snapshot = GameDetailsSnapshot(
+            **{
+                **self.snapshot.__dict__,
+                "moderator_chat_version": self.snapshot.moderator_chat_version + 1,
+                "moderator_chat_threads": threads,
+            }
+        )
         return self.snapshot
 
 
 class _StubContainer:
     def __init__(self, gameplay_inbound_port: _StubGameplayInboundPort) -> None:
         self.gameplay_inbound_port = gameplay_inbound_port
+        self.room_dev_mode = False
 
 
 class GameplayV1ViewTests(SimpleTestCase):
@@ -236,6 +354,95 @@ class GameplayV1ViewTests(SimpleTestCase):
         self.assertEqual(payload["police_mob_kills_count"], 0)
         self.assertEqual(payload["police_mob_kills_allowed"], 0)
         self.assertFalse(payload["police_brutality_exceeded"])
+        self.assertEqual(payload["chat_version"], 2)
+        self.assertEqual(payload["moderator_chat"]["viewer_unread_count"], 1)
+        self.assertEqual(len(payload["moderator_chat"]["threads"]), 2)
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_game_detail_player_sees_only_own_moderator_chat_thread(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.get("/gameplay/v1/games/g-1")
+        request.user = self.player
+
+        response = GameDetailView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertEqual(len(payload["moderator_chat"]["threads"]), 1)
+        self.assertEqual(payload["moderator_chat"]["threads"][0]["player_user_id"], "u_p1")
+        self.assertEqual(payload["moderator_chat"]["viewer_unread_count"], 1)
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_player_can_send_private_message_to_moderator_thread(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/send-moderator-chat",
+            data=json.dumps(
+                {
+                    "thread_user_id": "u_p1",
+                    "message_text": "Checking in with moderator",
+                    "expected_version": 2,
+                }
+            ),
+            content_type="application/json",
+        )
+        request.user = self.player
+
+        response = SendModeratorChatMessageView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.gameplay.send_moderator_chat_commands[0].thread_user_id, "u_p1")
+        payload = json.loads(response.content.decode("utf-8"))["data"]
+        self.assertEqual(payload["chat_version"], 3)
+        self.assertEqual(payload["moderator_chat"]["threads"][0]["messages"][-1]["body"], "Checking in with moderator")
+
+    @patch("project.mobboss_apps.gameplay.v1_views.user_dev_mode_enabled", return_value=True)
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_moderator_view_as_player_can_send_private_message_when_simulating_actions(
+        self,
+        mock_get_container,
+        _mock_dev_mode,
+    ) -> None:
+        self.container.room_dev_mode = True
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/send-moderator-chat?as_user_id=u_p1&simulate_actions=1",
+            data=json.dumps(
+                {
+                    "thread_user_id": "u_p1",
+                    "message_text": "Dev-mode player message",
+                    "expected_version": 2,
+                    "as_user_id": "u_p1",
+                    "simulate_actions": True,
+                }
+            ),
+            content_type="application/json",
+        )
+        request.user = self.moderator
+
+        response = SendModeratorChatMessageView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.gameplay.send_moderator_chat_commands[0].sender_user_id, "u_p1")
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_player_cannot_mark_another_players_thread_read(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/mark-moderator-chat-read",
+            data=json.dumps(
+                {
+                    "thread_user_id": "u_p2",
+                    "expected_version": 2,
+                }
+            ),
+            content_type="application/json",
+        )
+        request.user = self.player
+
+        response = MarkModeratorChatReadView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 403)
 
     @patch("project.mobboss_apps.gameplay.v1_views.get_container")
     def test_game_detail_player_sees_only_self_role_details(self, mock_get_container) -> None:
@@ -903,6 +1110,62 @@ class GameplayV1ViewTests(SimpleTestCase):
         self.assertEqual(self.gameplay.give_money_commands[0].giver_user_id, "u_p1")
         self.assertEqual(self.gameplay.give_money_commands[0].receiver_user_id, "u_p2")
         self.assertEqual(self.gameplay.give_money_commands[0].amount, 40)
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_moderator_add_funds_uses_authenticated_user(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/moderator-add-funds",
+            data='{"recipient_user_id":"u_p2","amount":80,"expected_version":1}',
+            content_type="application/json",
+        )
+        request.user = self.moderator
+
+        response = ModeratorAddFundsView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.gameplay.moderator_add_funds_commands), 1)
+        self.assertEqual(self.gameplay.moderator_add_funds_commands[0].requested_by_user_id, "u_mod")
+        self.assertEqual(self.gameplay.moderator_add_funds_commands[0].recipient_user_id, "u_p2")
+        self.assertEqual(self.gameplay.moderator_add_funds_commands[0].amount, 80)
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_moderator_transfer_funds_uses_authenticated_user(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/moderator-transfer-funds",
+            data='{"from_user_id":"u_p1","to_user_id":"u_p2","amount":50,"expected_version":1}',
+            content_type="application/json",
+        )
+        request.user = self.moderator
+
+        response = ModeratorTransferFundsView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.gameplay.moderator_transfer_funds_commands), 1)
+        self.assertEqual(self.gameplay.moderator_transfer_funds_commands[0].requested_by_user_id, "u_mod")
+        self.assertEqual(self.gameplay.moderator_transfer_funds_commands[0].from_user_id, "u_p1")
+        self.assertEqual(self.gameplay.moderator_transfer_funds_commands[0].to_user_id, "u_p2")
+        self.assertEqual(self.gameplay.moderator_transfer_funds_commands[0].amount, 50)
+
+    @patch("project.mobboss_apps.gameplay.v1_views.get_container")
+    def test_moderator_transfer_inventory_item_uses_authenticated_user(self, mock_get_container) -> None:
+        mock_get_container.return_value = self.container
+        request = self.factory.post(
+            "/gameplay/v1/games/g-1/moderator-transfer-inventory-item",
+            data='{"from_user_id":"u_p1","to_user_id":"u_p2","inventory_item_id":"inv-1","expected_version":1}',
+            content_type="application/json",
+        )
+        request.user = self.moderator
+
+        response = ModeratorTransferInventoryItemView.as_view()(request, game_id="g-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.gameplay.moderator_transfer_inventory_item_commands), 1)
+        self.assertEqual(self.gameplay.moderator_transfer_inventory_item_commands[0].requested_by_user_id, "u_mod")
+        self.assertEqual(self.gameplay.moderator_transfer_inventory_item_commands[0].from_user_id, "u_p1")
+        self.assertEqual(self.gameplay.moderator_transfer_inventory_item_commands[0].to_user_id, "u_p2")
+        self.assertEqual(self.gameplay.moderator_transfer_inventory_item_commands[0].inventory_item_id, "inv-1")
 
     @patch("project.mobboss_apps.gameplay.v1_views.get_container")
     def test_respond_money_gift_offer_uses_authenticated_user(self, mock_get_container) -> None:

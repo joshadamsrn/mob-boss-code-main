@@ -39,3 +39,23 @@ class RoomItemMediaOutboundPort(Protocol):
     def resolve_room_item_tile_image_url(self, image_url: str) -> str:
         ...
 
+    def save_preset_item_image(
+        self,
+        *,
+        user_id: str,
+        preset_id: int,
+        classification: str,
+        original_filename: str,
+        chunks: Iterable[bytes],
+    ) -> str:
+        ...
+
+    def clone_item_image_to_preset(
+        self,
+        *,
+        user_id: str,
+        preset_id: int,
+        classification: str,
+        source_image_path: str,
+    ) -> str:
+        ...

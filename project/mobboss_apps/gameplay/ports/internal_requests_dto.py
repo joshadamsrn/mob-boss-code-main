@@ -679,6 +679,73 @@ class GiveMoneyRequestDTO:
 
 
 @dataclass(frozen=True)
+class ModeratorAddFundsRequestDTO:
+    method: str
+    game_id: str
+    requested_by_user_id: str
+    recipient_user_id: str
+    amount: int
+    expected_version: int
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "ModeratorAddFundsRequestDTO":
+        return cls(
+            method=_parse_method(payload.get("method"), key="method"),
+            game_id=_require_non_empty(payload, "game_id"),
+            requested_by_user_id=_require_non_empty(payload, "requested_by_user_id"),
+            recipient_user_id=_require_non_empty(payload, "recipient_user_id"),
+            amount=_parse_int(payload.get("amount"), key="amount"),
+            expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
+        )
+
+
+@dataclass(frozen=True)
+class ModeratorTransferFundsRequestDTO:
+    method: str
+    game_id: str
+    requested_by_user_id: str
+    from_user_id: str
+    to_user_id: str
+    amount: int
+    expected_version: int
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "ModeratorTransferFundsRequestDTO":
+        return cls(
+            method=_parse_method(payload.get("method"), key="method"),
+            game_id=_require_non_empty(payload, "game_id"),
+            requested_by_user_id=_require_non_empty(payload, "requested_by_user_id"),
+            from_user_id=_require_non_empty(payload, "from_user_id"),
+            to_user_id=_require_non_empty(payload, "to_user_id"),
+            amount=_parse_int(payload.get("amount"), key="amount"),
+            expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
+        )
+
+
+@dataclass(frozen=True)
+class ModeratorTransferInventoryItemRequestDTO:
+    method: str
+    game_id: str
+    requested_by_user_id: str
+    from_user_id: str
+    to_user_id: str
+    inventory_item_id: str
+    expected_version: int
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "ModeratorTransferInventoryItemRequestDTO":
+        return cls(
+            method=_parse_method(payload.get("method"), key="method"),
+            game_id=_require_non_empty(payload, "game_id"),
+            requested_by_user_id=_require_non_empty(payload, "requested_by_user_id"),
+            from_user_id=_require_non_empty(payload, "from_user_id"),
+            to_user_id=_require_non_empty(payload, "to_user_id"),
+            inventory_item_id=_require_non_empty(payload, "inventory_item_id"),
+            expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
+        )
+
+
+@dataclass(frozen=True)
 class RespondMoneyGiftOfferRequestDTO:
     method: str
     game_id: str
@@ -695,6 +762,46 @@ class RespondMoneyGiftOfferRequestDTO:
             receiver_user_id=_require_non_empty(payload, "receiver_user_id"),
             money_gift_offer_id=_require_non_empty(payload, "money_gift_offer_id"),
             accept=_parse_bool(payload.get("accept"), key="accept"),
+            expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
+        )
+
+
+@dataclass(frozen=True)
+class SendModeratorChatMessageRequestDTO:
+    method: str
+    game_id: str
+    sender_user_id: str
+    thread_user_id: str
+    message_text: str
+    expected_version: int
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "SendModeratorChatMessageRequestDTO":
+        return cls(
+            method=_parse_method(payload.get("method"), key="method"),
+            game_id=_require_non_empty(payload, "game_id"),
+            sender_user_id=_require_non_empty(payload, "sender_user_id"),
+            thread_user_id=_require_non_empty(payload, "thread_user_id"),
+            message_text=_require_non_empty(payload, "message_text"),
+            expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
+        )
+
+
+@dataclass(frozen=True)
+class MarkModeratorChatReadRequestDTO:
+    method: str
+    game_id: str
+    viewer_user_id: str
+    thread_user_id: str
+    expected_version: int
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "MarkModeratorChatReadRequestDTO":
+        return cls(
+            method=_parse_method(payload.get("method"), key="method"),
+            game_id=_require_non_empty(payload, "game_id"),
+            viewer_user_id=_require_non_empty(payload, "viewer_user_id"),
+            thread_user_id=_require_non_empty(payload, "thread_user_id"),
             expected_version=_parse_int(payload.get("expected_version"), key="expected_version"),
         )
 

@@ -50,7 +50,13 @@ from project.mobboss_apps.gameplay.ports.internal import (
     InventoryItemStateSnapshot,
     LedgerEntrySnapshot,
     LedgerStateSnapshot,
+    MarkModeratorChatReadCommand,
     MoneyGiftOfferSnapshot,
+    ModeratorAddFundsCommand,
+    ModeratorChatMessageSnapshot,
+    ModeratorChatThreadSnapshot,
+    ModeratorTransferFundsCommand,
+    ModeratorTransferInventoryItemCommand,
     NotificationEventSnapshot,
     ParticipantStateSnapshot,
     ParticipantPowerStateSnapshot,
@@ -63,6 +69,7 @@ from project.mobboss_apps.gameplay.ports.internal import (
     SaleOfferSnapshot,
     SellInventoryItemCommand,
     SellInventoryToSupplyCommand,
+    SendModeratorChatMessageCommand,
     SetInventoryResalePriceCommand,
     StartSessionFromRoomCommand,
     SubmitAccusedSelectionCommand,
@@ -183,6 +190,11 @@ class GameplayService(GameplayInboundPort):
                 startup_notifications,
                 now_epoch_seconds=command.launched_at_epoch_seconds,
             ),
+            moderator_chat_version=0,
+            moderator_chat_threads=[
+                ModeratorChatThreadSnapshot(player_user_id=participant.user_id)
+                for participant in participants
+            ],
         )
         session = _refresh_ledger(session)
         self._repository.save_game_session(session)
@@ -3003,6 +3015,228 @@ class GameplayService(GameplayInboundPort):
         self._save_game_session(session, updated)
         return updated
 
+    def moderator_add_funds(self, command: ModeratorAddFundsCommand) -> GameDetailsSnapshot:
+        session = self.get_game_details(command.game_id)
+        now_epoch_seconds = self._now_epoch_seconds()
+        if command.requested_by_user_id != session.moderator_user_id:
+            raise PermissionError("Only moderator can add funds.")
+        if command.expected_version != session.version:
+            raise ConflictProblem(
+                detail=(
+                    "Game state changed before this mutation was applied. "
+                    f"Expected version {command.expected_version}, current is {session.version}."
+                ),
+                code="version_conflict",
+                extensions={
+                    "expected_version": command.expected_version,
+                    "current_version": session.version,
+                },
+            )
+        if session.status != "in_progress":
+            raise ConflictProblem("Cannot use moderator adjustments outside in-progress game.", code="invalid_state")
+        if command.amount <= 0:
+            raise ValueError("Amount must be greater than 0.")
+
+        recipient = next((p for p in session.participants if p.user_id == command.recipient_user_id), None)
+        if recipient is None:
+            raise ValueError("Recipient participant not found in session.")
+
+        updated = replace(
+            session,
+            participants=_adjust_participant_money_balance(
+                session.participants,
+                user_id=recipient.user_id,
+                delta=command.amount,
+            ),
+            notification_feed=_append_notifications(
+                session.notification_feed,
+                [
+                    (recipient.user_id, f"Moderator added ${command.amount} to your account."),
+                    (session.moderator_user_id, f"You added ${command.amount} to {recipient.username}'s account."),
+                ],
+                now_epoch_seconds=now_epoch_seconds,
+            ),
+            version=session.version + 1,
+        )
+        updated = _append_ledger_entries(
+            updated,
+            [
+                _build_ledger_entry(
+                    entry_kind="moderator_adjustment",
+                    amount=command.amount,
+                    from_holder_id=CENTRAL_SUPPLY_HOLDER_ID,
+                    to_holder_id=recipient.user_id,
+                    now_epoch_seconds=now_epoch_seconds,
+                    note="Moderator added funds.",
+                )
+            ],
+        )
+        updated = self._resolve_information_winner_if_needed(updated, now_epoch_seconds=now_epoch_seconds)
+        self._save_game_session(session, updated)
+        return updated
+
+    def moderator_transfer_funds(self, command: ModeratorTransferFundsCommand) -> GameDetailsSnapshot:
+        session = self.get_game_details(command.game_id)
+        now_epoch_seconds = self._now_epoch_seconds()
+        if command.requested_by_user_id != session.moderator_user_id:
+            raise PermissionError("Only moderator can transfer funds.")
+        if command.expected_version != session.version:
+            raise ConflictProblem(
+                detail=(
+                    "Game state changed before this mutation was applied. "
+                    f"Expected version {command.expected_version}, current is {session.version}."
+                ),
+                code="version_conflict",
+                extensions={
+                    "expected_version": command.expected_version,
+                    "current_version": session.version,
+                },
+            )
+        if session.status != "in_progress":
+            raise ConflictProblem("Cannot use moderator adjustments outside in-progress game.", code="invalid_state")
+        if command.amount <= 0:
+            raise ValueError("Amount must be greater than 0.")
+        if command.from_user_id == command.to_user_id:
+            raise ValueError("Source and recipient must be different participants.")
+
+        source = next((p for p in session.participants if p.user_id == command.from_user_id), None)
+        recipient = next((p for p in session.participants if p.user_id == command.to_user_id), None)
+        if source is None:
+            raise ValueError("Source participant not found in session.")
+        if recipient is None:
+            raise ValueError("Recipient participant not found in session.")
+        if source.money_balance < command.amount:
+            raise ConflictProblem("Source participant has insufficient funds.", code="invalid_state")
+
+        participants = _adjust_participant_money_balance(session.participants, user_id=source.user_id, delta=-command.amount)
+        participants = _adjust_participant_money_balance(participants, user_id=recipient.user_id, delta=command.amount)
+        updated = replace(
+            session,
+            participants=participants,
+            notification_feed=_append_notifications(
+                session.notification_feed,
+                [
+                    (source.user_id, f"Moderator transferred ${command.amount} from your account to {recipient.username}."),
+                    (recipient.user_id, f"Moderator transferred ${command.amount} from {source.username} to your account."),
+                    (session.moderator_user_id, f"You transferred ${command.amount} from {source.username} to {recipient.username}."),
+                ],
+                now_epoch_seconds=now_epoch_seconds,
+            ),
+            version=session.version + 1,
+        )
+        updated = _append_ledger_entries(
+            updated,
+            [
+                _build_ledger_entry(
+                    entry_kind="moderator_adjustment",
+                    amount=command.amount,
+                    from_holder_id=source.user_id,
+                    to_holder_id=recipient.user_id,
+                    now_epoch_seconds=now_epoch_seconds,
+                    note="Moderator transferred funds.",
+                )
+            ],
+        )
+        updated = self._resolve_information_winner_if_needed(updated, now_epoch_seconds=now_epoch_seconds)
+        self._save_game_session(session, updated)
+        return updated
+
+    def moderator_transfer_inventory_item(self, command: ModeratorTransferInventoryItemCommand) -> GameDetailsSnapshot:
+        session = self.get_game_details(command.game_id)
+        now_epoch_seconds = self._now_epoch_seconds()
+        if command.requested_by_user_id != session.moderator_user_id:
+            raise PermissionError("Only moderator can transfer items.")
+        if command.expected_version != session.version:
+            raise ConflictProblem(
+                detail=(
+                    "Game state changed before this mutation was applied. "
+                    f"Expected version {command.expected_version}, current is {session.version}."
+                ),
+                code="version_conflict",
+                extensions={
+                    "expected_version": command.expected_version,
+                    "current_version": session.version,
+                },
+            )
+        if session.status != "in_progress":
+            raise ConflictProblem("Cannot use moderator adjustments outside in-progress game.", code="invalid_state")
+        if command.from_user_id == command.to_user_id:
+            raise ValueError("Source and recipient must be different participants.")
+
+        source = next((p for p in session.participants if p.user_id == command.from_user_id), None)
+        recipient = next((p for p in session.participants if p.user_id == command.to_user_id), None)
+        if source is None:
+            raise ValueError("Source participant not found in session.")
+        if recipient is None:
+            raise ValueError("Recipient participant not found in session.")
+
+        inventory_item = next((item for item in source.inventory if item.item_id == command.inventory_item_id), None)
+        if inventory_item is None:
+            raise ValueError("Inventory item not found for source participant.")
+
+        canceled_gift_offers = [
+            offer for offer in session.pending_gift_offers if offer.inventory_item_id == inventory_item.item_id
+        ]
+        canceled_sale_offers = [
+            offer for offer in session.pending_sale_offers if offer.inventory_item_id == inventory_item.item_id
+        ]
+        canceled_user_ids = {
+            *[offer.giver_user_id for offer in canceled_gift_offers],
+            *[offer.receiver_user_id for offer in canceled_gift_offers],
+            *[offer.seller_user_id for offer in canceled_sale_offers],
+            *[offer.buyer_user_id for offer in canceled_sale_offers],
+        }
+        canceled_user_ids.discard(source.user_id)
+        canceled_user_ids.discard(recipient.user_id)
+        canceled_user_ids.discard(session.moderator_user_id)
+
+        participants: list[ParticipantStateSnapshot] = []
+        for participant in session.participants:
+            if participant.user_id == source.user_id:
+                participants.append(
+                    replace(
+                        participant,
+                        inventory=[item for item in participant.inventory if item.item_id != inventory_item.item_id],
+                    )
+                )
+                continue
+            if participant.user_id == recipient.user_id:
+                participants.append(replace(participant, inventory=[*participant.inventory, inventory_item]))
+                continue
+            participants.append(participant)
+
+        notification_pairs = [
+            (source.user_id, f"Moderator transferred {inventory_item.display_name} from your inventory to {recipient.username}."),
+            (recipient.user_id, f"Moderator transferred {inventory_item.display_name} from {source.username} to your inventory."),
+            (session.moderator_user_id, f"You transferred {inventory_item.display_name} from {source.username} to {recipient.username}."),
+        ]
+        if canceled_gift_offers or canceled_sale_offers:
+            notification_pairs.extend(
+                [
+                    (user_id, f"A moderator transferred {inventory_item.display_name}. Related pending offers were canceled.")
+                    for user_id in sorted(canceled_user_ids)
+                ]
+            )
+
+        updated = replace(
+            session,
+            participants=participants,
+            pending_gift_offers=[
+                offer for offer in session.pending_gift_offers if offer.inventory_item_id != inventory_item.item_id
+            ],
+            pending_sale_offers=[
+                offer for offer in session.pending_sale_offers if offer.inventory_item_id != inventory_item.item_id
+            ],
+            notification_feed=_append_notifications(
+                session.notification_feed,
+                notification_pairs,
+                now_epoch_seconds=now_epoch_seconds,
+            ),
+            version=session.version + 1,
+        )
+        self._save_game_session(session, updated)
+        return updated
+
     def respond_money_gift_offer(self, command: RespondMoneyGiftOfferCommand) -> GameDetailsSnapshot:
         session = self.get_game_details(command.game_id)
         now_epoch_seconds = self._now_epoch_seconds()
@@ -3132,6 +3366,48 @@ class GameplayService(GameplayInboundPort):
         self._save_game_session(session, updated)
         return updated
 
+    def send_moderator_chat_message(self, command: SendModeratorChatMessageCommand) -> GameDetailsSnapshot:
+        session = self.get_game_details(command.game_id)
+        _validate_chat_expected_version(command.expected_version, session.moderator_chat_version)
+        if session.status != "in_progress":
+            raise ConflictProblem("Moderator chat is read-only after the game ends.", code="invalid_state")
+        normalized_message = " ".join(str(command.message_text).split()).strip()
+        if not normalized_message:
+            raise ValueError("Message text must be non-empty.")
+        if len(normalized_message) > 500:
+            raise ValueError("Message text must be 500 characters or fewer.")
+        updated = replace(
+            session,
+            moderator_chat_threads=_send_moderator_chat_message(
+                session,
+                sender_user_id=command.sender_user_id,
+                thread_user_id=command.thread_user_id,
+                message_text=normalized_message,
+                now_epoch_seconds=self._now_epoch_seconds(),
+            ),
+            moderator_chat_version=session.moderator_chat_version + 1,
+        )
+        self._save_game_session(session, updated)
+        return updated
+
+    def mark_moderator_chat_read(self, command: MarkModeratorChatReadCommand) -> GameDetailsSnapshot:
+        session = self.get_game_details(command.game_id)
+        _validate_chat_expected_version(command.expected_version, session.moderator_chat_version)
+        updated_threads = _mark_moderator_chat_thread_read(
+            session,
+            viewer_user_id=command.viewer_user_id,
+            thread_user_id=command.thread_user_id,
+        )
+        if updated_threads == session.moderator_chat_threads:
+            return session
+        updated = replace(
+            session,
+            moderator_chat_threads=updated_threads,
+            moderator_chat_version=session.moderator_chat_version + 1,
+        )
+        self._save_game_session(session, updated)
+        return updated
+
     def kill_game(self, command: KillGameCommand) -> GameDetailsSnapshot:
         session = self.get_game_details(command.game_id)
         if command.requested_by_user_id != session.moderator_user_id:
@@ -3147,6 +3423,8 @@ class GameplayService(GameplayInboundPort):
             latest_public_notice="Game ended by moderator.",
             winning_faction=None,
             winning_user_id=None,
+            moderator_chat_threads=[],
+            moderator_chat_version=session.moderator_chat_version + 1,
             version=session.version + 1,
         )
         self._save_game_session(session, updated)
@@ -3381,6 +3659,98 @@ def _validate_expected_version(expected_version: int, current_version: int) -> N
                 "current_version": current_version,
             },
         )
+
+
+def _validate_chat_expected_version(expected_version: int, current_version: int) -> None:
+    if expected_version != current_version:
+        raise ConflictProblem(
+            detail=(
+                "Chat state changed before this mutation was applied. "
+                f"Expected version {expected_version}, current is {current_version}."
+            ),
+            code="version_conflict",
+            extensions={
+                "expected_version": expected_version,
+                "current_version": current_version,
+            },
+        )
+
+
+def _send_moderator_chat_message(
+    session: GameDetailsSnapshot,
+    *,
+    sender_user_id: str,
+    thread_user_id: str,
+    message_text: str,
+    now_epoch_seconds: int,
+) -> list[ModeratorChatThreadSnapshot]:
+    is_moderator = sender_user_id == session.moderator_user_id
+    if not is_moderator and sender_user_id != thread_user_id:
+        raise PermissionError("Players can only message the moderator in their own thread.")
+    if not any(participant.user_id == thread_user_id for participant in session.participants):
+        raise ValueError("Chat thread participant not found.")
+    if not is_moderator and not any(participant.user_id == sender_user_id for participant in session.participants):
+        raise PermissionError("Only joined players can use moderator chat.")
+
+    next_threads: list[ModeratorChatThreadSnapshot] = []
+    matched = False
+    for thread in session.moderator_chat_threads:
+        if thread.player_user_id != thread_user_id:
+            next_threads.append(thread)
+            continue
+        matched = True
+        next_threads.append(
+            replace(
+                thread,
+                unread_for_player_count=(
+                    thread.unread_for_player_count + 1 if is_moderator else 0
+                ),
+                unread_for_moderator_count=(
+                    0 if is_moderator else thread.unread_for_moderator_count + 1
+                ),
+                messages=[
+                    *thread.messages,
+                    ModeratorChatMessageSnapshot(
+                        message_id=str(uuid4()),
+                        sender_user_id=sender_user_id,
+                        body=message_text,
+                        created_at_epoch_seconds=now_epoch_seconds,
+                    ),
+                ],
+            )
+        )
+    if not matched:
+        raise ValueError("Chat thread participant not found.")
+    return next_threads
+
+
+def _mark_moderator_chat_thread_read(
+    session: GameDetailsSnapshot,
+    *,
+    viewer_user_id: str,
+    thread_user_id: str,
+) -> list[ModeratorChatThreadSnapshot]:
+    is_moderator = viewer_user_id == session.moderator_user_id
+    if not is_moderator and viewer_user_id != thread_user_id:
+        raise PermissionError("Players can only mark their own moderator chat thread as read.")
+
+    next_threads: list[ModeratorChatThreadSnapshot] = []
+    matched = False
+    for thread in session.moderator_chat_threads:
+        if thread.player_user_id != thread_user_id:
+            next_threads.append(thread)
+            continue
+        matched = True
+        next_threads.append(
+            replace(
+                thread,
+                unread_for_player_count=0 if not is_moderator else thread.unread_for_player_count,
+                unread_for_moderator_count=0 if is_moderator else thread.unread_for_moderator_count,
+            )
+        )
+    if not matched:
+        raise ValueError("Chat thread participant not found.")
+    return next_threads
 
 
 def _require_active_role_participant(
@@ -3844,7 +4214,7 @@ def _player_transaction_from_ledger_entry(
             money_amount=entry.amount,
             item_name=_item_name_from_ledger_note(entry.note),
         )
-    if entry.entry_kind == "money_gift":
+    if entry.entry_kind in {"money_gift", "moderator_adjustment"}:
         return PlayerTransactionSnapshot(
             transaction_id=f"legacy-{entry.entry_id}",
             transaction_kind="money_gift",

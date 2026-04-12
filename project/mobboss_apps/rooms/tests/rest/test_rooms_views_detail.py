@@ -19,17 +19,21 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
 from project.mobboss_apps.rooms.views import assign_role, detail  # noqa: E402
 
 
-def _room_snapshot() -> RoomDetailsSnapshot:
+def _room_snapshot(
+    *,
+    moderator_user_id: str = "u_mod",
+    moderator_username: str = "moderator",
+) -> RoomDetailsSnapshot:
     return RoomDetailsSnapshot(
         room_id="r-1",
         name="Room 1",
         status="lobby",
-        moderator_user_id="u_mod",
+        moderator_user_id=moderator_user_id,
         opened_at_epoch_seconds=0,
         members=[
             RoomMemberSnapshot(
-                user_id="u_mod",
-                username="moderator",
+                user_id=moderator_user_id,
+                username=moderator_username,
                 membership_status="joined",
                 is_ready=True,
                 starting_balance=0,
@@ -92,6 +96,11 @@ class RoomDetailViewTests(SimpleTestCase):
         self.factory = RequestFactory()
         self.moderator_user = type("StubModerator", (), {"is_authenticated": True, "id": "u_mod", "username": "moderator"})()
         self.player_user = type("StubPlayer", (), {"is_authenticated": True, "id": "u_1", "username": "player1"})()
+        self.dev_user = type(
+            "StubDevUser",
+            (),
+            {"is_authenticated": True, "id": "u_dev", "username": "devmode", "is_dev_tools_user": True},
+        )()
 
     def test_moderator_can_see_central_supply_catalog(self) -> None:
         request = self.factory.get("/rooms/r-1/")
@@ -141,6 +150,67 @@ class RoomDetailViewTests(SimpleTestCase):
         self.assertEqual(response.url, "/rooms/r-1/")
         self.assertEqual(container.rooms_inbound_port.assigned_role_commands, [])
         _mock_error.assert_called_once_with(request, "Role assignment is only available in dev mode.")
+
+    def test_dev_tools_user_sees_dev_controls_when_room_dev_mode_disabled(self) -> None:
+        request = self.factory.get("/rooms/r-1/")
+        request.user = self.dev_user
+        container = _StubContainer(_room_snapshot(moderator_user_id="u_dev", moderator_username="devmode"))
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = detail(request, room_id="r-1")
+
+        content = response.content.decode("utf-8")
+
+        self.assertIn("Add Dev Seat", content)
+        self.assertIn("Mark All Ready", content)
+        self.assertIn("Dev View Tabs", content)
+        self.assertIn("Min: 1/2", content)
+
+    @patch("project.mobboss_apps.rooms.views.list_room_supply_presets_for_user")
+    def test_moderator_sees_presets_button_when_saved_presets_exist(self, mock_list_presets) -> None:
+        mock_list_presets.return_value = [
+            {
+                "id": 1,
+                "name": "Standard Setup",
+                "updated_at": "2026-04-11T00:00:00",
+                "counts": {"tier_1_gun_count": 1, "tier_2_gun_count": 1, "tier_3_gun_count": 0, "knife_count": 2},
+                "rows": [],
+            }
+        ]
+        request = self.factory.get("/rooms/r-1/")
+        request.user = self.moderator_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=_StubContainer(_room_snapshot())):
+            response = detail(request, room_id="r-1")
+
+        self.assertContains(response, 'id="openCentralSupplyPresets"', html=False)
+
+    def test_moderator_hides_presets_button_when_no_presets_exist(self) -> None:
+        request = self.factory.get("/rooms/r-1/")
+        request.user = self.moderator_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=_StubContainer(_room_snapshot())):
+            response = detail(request, room_id="r-1")
+
+        self.assertNotContains(response, 'id="openCentralSupplyPresets"', html=False)
+
+    @patch("project.mobboss_apps.rooms.views.messages.error")
+    @patch("project.mobboss_apps.rooms.views.messages.success")
+    def test_dev_tools_user_can_assign_role_when_room_dev_mode_disabled(self, _mock_success, _mock_error) -> None:
+        room = _room_snapshot(moderator_user_id="u_dev", moderator_username="devmode")
+        container = _StubContainer(room)
+        request = self.factory.post(
+            "/rooms/r-1/assign-role",
+            data={"target_user_id": "u_1", "role_name": "Deputy"},
+        )
+        request.user = self.dev_user
+
+        with patch("project.mobboss_apps.rooms.views.get_container", return_value=container):
+            response = assign_role(request, room_id="r-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/rooms/r-1/")
+        self.assertEqual(len(container.rooms_inbound_port.assigned_role_commands), 1)
 
 
 if __name__ == "__main__":

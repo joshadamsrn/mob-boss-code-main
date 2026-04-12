@@ -15,6 +15,7 @@ from project.mobboss_apps.gameplay.adapters.internal.page_view_mapper import (
     build_gameplay_page_view,
     _participant_role_label,
 )
+from project.mobboss_apps.gameplay.chat_projection import build_moderator_chat_view
 from project.mobboss_apps.gameplay.ports.internal import (
     ActivateDetectiveInvestigationCommand,
     ActivateInspectorRecordInspectionCommand,
@@ -87,6 +88,7 @@ from project.mobboss_apps.gameplay.ports.internal_requests_dto import (
 )
 from project.mobboss_apps.mobboss.src.starting_money import getStartingMoney
 from project.mobboss_apps.mobboss.composition import get_container
+from project.mobboss_apps.mobboss.devtools import user_dev_mode_enabled
 from project.mobboss_apps.rooms.ports.internal import DeleteRoomCommand
 
 MERCHANT_GOAL_ADDITIONAL_PERCENT = 0.40
@@ -495,7 +497,8 @@ def _redirect_to_game_detail_with_context(request: HttpRequest, game_id: str) ->
 
 def _resolve_action_user_id(request: HttpRequest, *, session, dev_mode_enabled: bool) -> str:
     actor_user_id = _current_user_id(request)
-    if session.moderator_user_id != actor_user_id or not dev_mode_enabled:
+    effective_dev_mode_enabled = user_dev_mode_enabled(user=request.user, room_dev_mode=dev_mode_enabled)
+    if session.moderator_user_id != actor_user_id or not effective_dev_mode_enabled:
         return actor_user_id
 
     requested_user_id = str(request.POST.get("as_user_id", request.GET.get("as_user_id", ""))).strip()
@@ -1894,7 +1897,7 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
         session = gameplay_inbound.get_game_details(dto.game_id)
         actor_user_id = _current_user_id(request)
         actor_is_moderator = session.moderator_user_id == actor_user_id
-        dev_mode_enabled = container.room_dev_mode
+        dev_mode_enabled = user_dev_mode_enabled(user=request.user, room_dev_mode=container.room_dev_mode)
 
         requested_view_as_user_id = str(request.GET.get("as_user_id", "")).strip()
         requested_simulate_actions = _parse_bool_flag(request.GET.get("simulate_actions", ""))
@@ -2241,6 +2244,12 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
             viewed_role_name = current_participant.role_name
         if viewed_role_name and viewed_role_name != "Moderator":
             viewed_role_image_url = _role_ability_image_url(viewed_role_name)
+        initial_moderator_chat = build_moderator_chat_view(
+            session,
+            viewer_user_id=current_user_id,
+            is_moderator=bool(page.is_moderator),
+            participant_name_by_id=participant_name_by_id,
+        )
 
         return render(
             request,
@@ -2302,6 +2311,8 @@ def detail(request: HttpRequest, game_id: str) -> HttpResponse:
                 "felon_escape_panel": felon_escape_panel,
                 "moderator_latest_jury_usernames": moderator_latest_jury_usernames,
                 "mob_secret_word_panel": mob_secret_word_panel,
+                "initial_moderator_chat": initial_moderator_chat,
+                "initial_chat_version": session.moderator_chat_version,
                 "game_plan_steps": _game_plan_steps(),
                 "game_state_poll_interval_seconds": container.room_state_poll_interval_seconds,
                 "can_view_accused_selection": can_view_accused_selection,

@@ -13,28 +13,39 @@ from project.mobboss_apps.gameplay.ports.internal import (
     GiveMoneyCommand,
     AllowTrialVotingCommand,
     AdvanceAccusedSelectionTimeoutCommand,
+    MarkModeratorChatReadCommand,
+    ModeratorAddFundsCommand,
+    ModeratorTransferFundsCommand,
+    ModeratorTransferInventoryItemCommand,
     ReportDeathCommand,
     OfferGiftItemCommand,
     RespondGiftOfferCommand,
     RespondMoneyGiftOfferCommand,
     RespondSaleOfferCommand,
+    SendModeratorChatMessageCommand,
     SellInventoryItemCommand,
     SellInventoryToSupplyCommand,
     SetInventoryResalePriceCommand,
     SubmitAccusedSelectionCommand,
     SubmitTrialVoteCommand,
 )
+from project.mobboss_apps.gameplay.chat_projection import build_moderator_chat_view
 from project.mobboss_apps.gameplay.ports.internal_requests_dto import (
     BuyFromSupplyRequestDTO,
     GiveMoneyRequestDTO,
     AllowTrialVotingRequestDTO,
     AdvanceAccusedSelectionTimeoutRequestDTO,
     GameIdRequestDTO,
+    MarkModeratorChatReadRequestDTO,
+    ModeratorAddFundsRequestDTO,
+    ModeratorTransferFundsRequestDTO,
+    ModeratorTransferInventoryItemRequestDTO,
     ReportDeathRequestDTO,
     OfferGiftItemRequestDTO,
     RespondGiftOfferRequestDTO,
     RespondMoneyGiftOfferRequestDTO,
     RespondSaleOfferRequestDTO,
+    SendModeratorChatMessageRequestDTO,
     SellInventoryItemRequestDTO,
     SellInventoryToSupplyRequestDTO,
     SetInventoryResalePriceRequestDTO,
@@ -43,6 +54,7 @@ from project.mobboss_apps.gameplay.ports.internal_requests_dto import (
     SubmitTrialVoteRequestDTO,
 )
 from project.mobboss_apps.mobboss.composition import get_container
+from project.mobboss_apps.mobboss.devtools import user_dev_mode_enabled
 from project.mobboss_apps.mobboss.decorators import problem_details
 from project.mobboss_apps.mobboss.exceptions import UnauthorizedProblem
 from project.mobboss_apps.mobboss.src.starting_money import getStartingMoney
@@ -85,6 +97,34 @@ def _display_name_for_user(participant_name_by_id: dict[str, str], user_id: str 
         return None
     name = str(participant_name_by_id.get(user_id, "")).strip()
     return name or unknown
+
+
+def _parse_bool_flag(value: object) -> bool:
+    return str(value if value is not None else "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_v1_action_user_id(
+    request: HttpRequest,
+    *,
+    snapshot,
+    container,
+    actor_user_id: str,
+    payload: dict[str, Any],
+) -> str:
+    if snapshot.moderator_user_id != actor_user_id:
+        return actor_user_id
+    if not user_dev_mode_enabled(user=request.user, room_dev_mode=getattr(container, "room_dev_mode", False)):
+        return actor_user_id
+    if not _parse_bool_flag(payload.get("simulate_actions", request.GET.get("simulate_actions", ""))):
+        return actor_user_id
+
+    requested_user_id = str(payload.get("as_user_id", request.GET.get("as_user_id", ""))).strip()
+    if not requested_user_id:
+        return actor_user_id
+    allowed_user_ids = {participant.user_id for participant in snapshot.participants}
+    if requested_user_id in allowed_user_ids:
+        return requested_user_id
+    return actor_user_id
 
 
 @problem_details
@@ -192,6 +232,7 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
         "phase": snapshot.phase,
         "round_number": snapshot.round_number,
         "version": snapshot.version,
+        "chat_version": snapshot.moderator_chat_version,
         "launched_at_epoch_seconds": snapshot.launched_at_epoch_seconds,
         "ended_at_epoch_seconds": snapshot.ended_at_epoch_seconds,
         "winning_faction": snapshot.winning_faction,
@@ -257,6 +298,12 @@ def _to_game_view_dict(snapshot, *, viewer_user_id: str, is_moderator: bool) -> 
             if is_moderator or viewer_user_id in {offer.seller_user_id, offer.buyer_user_id}
         ],
         "participants": participants,
+        "moderator_chat": build_moderator_chat_view(
+            snapshot,
+            viewer_user_id=viewer_user_id,
+            is_moderator=is_moderator,
+            participant_name_by_id=participant_name_by_id,
+        ),
         "police_mob_kills_count": (
             snapshot.police_mob_kills_count if can_view_police_mob_kill_tracker else None
         ),
@@ -478,7 +525,7 @@ class GameDetailView(BaseJsonView):
         is_moderator = snapshot.moderator_user_id == viewer_user_id
         requested_view_as_user_id = str(request.GET.get("as_user_id", "")).strip()
         view_as_user_id = viewer_user_id
-        if is_moderator and getattr(container, "room_dev_mode", False):
+        if is_moderator and user_dev_mode_enabled(user=request.user, room_dev_mode=getattr(container, "room_dev_mode", False)):
             allowed_view_ids = {participant.user_id for participant in snapshot.participants}
             if requested_view_as_user_id in allowed_view_ids:
                 view_as_user_id = requested_view_as_user_id
@@ -489,6 +536,87 @@ class GameDetailView(BaseJsonView):
 
         viewer_is_moderator = snapshot.moderator_user_id == view_as_user_id
         return self._ok(_to_game_view_dict(snapshot, viewer_user_id=view_as_user_id, is_moderator=viewer_is_moderator))
+
+
+class SendModeratorChatMessageView(BaseJsonView):
+    def post(self, request: HttpRequest, game_id: str) -> JsonResponse:
+        actor_user_id = self._require_authenticated_user_id(request)
+        payload = self._load_json_body(request)
+        payload["method"] = request.method
+        payload["game_id"] = game_id
+
+        container = get_container()
+        gameplay_inbound = container.gameplay_inbound_port
+        snapshot = gameplay_inbound.get_game_details(game_id)
+        sender_user_id = _resolve_v1_action_user_id(
+            request,
+            snapshot=snapshot,
+            container=container,
+            actor_user_id=actor_user_id,
+            payload=payload,
+        )
+        payload["sender_user_id"] = sender_user_id
+        dto = SendModeratorChatMessageRequestDTO.from_payload(payload)
+        is_moderator = sender_user_id == snapshot.moderator_user_id
+        is_thread_player = any(
+            participant.user_id == sender_user_id == dto.thread_user_id
+            for participant in snapshot.participants
+        )
+        if not is_moderator and not is_thread_player:
+            raise PermissionError("Players can only message the moderator in their own thread.")
+
+        updated = gameplay_inbound.send_moderator_chat_message(
+            SendModeratorChatMessageCommand(
+                game_id=dto.game_id,
+                sender_user_id=dto.sender_user_id,
+                thread_user_id=dto.thread_user_id,
+                message_text=dto.message_text,
+                expected_version=dto.expected_version,
+            )
+        )
+        return self._ok(
+            _to_game_view_dict(updated, viewer_user_id=sender_user_id, is_moderator=is_moderator)
+        )
+
+
+class MarkModeratorChatReadView(BaseJsonView):
+    def post(self, request: HttpRequest, game_id: str) -> JsonResponse:
+        actor_user_id = self._require_authenticated_user_id(request)
+        payload = self._load_json_body(request)
+        payload["method"] = request.method
+        payload["game_id"] = game_id
+
+        container = get_container()
+        gameplay_inbound = container.gameplay_inbound_port
+        snapshot = gameplay_inbound.get_game_details(game_id)
+        viewer_user_id = _resolve_v1_action_user_id(
+            request,
+            snapshot=snapshot,
+            container=container,
+            actor_user_id=actor_user_id,
+            payload=payload,
+        )
+        payload["viewer_user_id"] = viewer_user_id
+        dto = MarkModeratorChatReadRequestDTO.from_payload(payload)
+        is_moderator = viewer_user_id == snapshot.moderator_user_id
+        is_thread_player = any(
+            participant.user_id == viewer_user_id == dto.thread_user_id
+            for participant in snapshot.participants
+        )
+        if not is_moderator and not is_thread_player:
+            raise PermissionError("Players can only access their own moderator chat thread.")
+
+        updated = gameplay_inbound.mark_moderator_chat_read(
+            MarkModeratorChatReadCommand(
+                game_id=dto.game_id,
+                viewer_user_id=dto.viewer_user_id,
+                thread_user_id=dto.thread_user_id,
+                expected_version=dto.expected_version,
+            )
+        )
+        return self._ok(
+            _to_game_view_dict(updated, viewer_user_id=viewer_user_id, is_moderator=is_moderator)
+        )
 
 
 class ReportDeathView(BaseJsonView):
@@ -751,6 +879,77 @@ class GiveMoneyView(BaseJsonView):
         )
         is_moderator = updated.moderator_user_id == giver_user_id
         return self._ok(_to_game_view_dict(updated, viewer_user_id=giver_user_id, is_moderator=is_moderator))
+
+
+class ModeratorAddFundsView(BaseJsonView):
+    def post(self, request: HttpRequest, game_id: str) -> JsonResponse:
+        requester_user_id = self._require_authenticated_user_id(request)
+        payload = self._load_json_body(request)
+        payload["method"] = request.method
+        payload["game_id"] = game_id
+        payload["requested_by_user_id"] = requester_user_id
+        dto = ModeratorAddFundsRequestDTO.from_payload(payload)
+
+        container = get_container()
+        gameplay_inbound = container.gameplay_inbound_port
+        updated = gameplay_inbound.moderator_add_funds(
+            ModeratorAddFundsCommand(
+                game_id=dto.game_id,
+                requested_by_user_id=dto.requested_by_user_id,
+                recipient_user_id=dto.recipient_user_id,
+                amount=dto.amount,
+                expected_version=dto.expected_version,
+            )
+        )
+        return self._ok(_to_game_view_dict(updated, viewer_user_id=requester_user_id, is_moderator=True))
+
+
+class ModeratorTransferFundsView(BaseJsonView):
+    def post(self, request: HttpRequest, game_id: str) -> JsonResponse:
+        requester_user_id = self._require_authenticated_user_id(request)
+        payload = self._load_json_body(request)
+        payload["method"] = request.method
+        payload["game_id"] = game_id
+        payload["requested_by_user_id"] = requester_user_id
+        dto = ModeratorTransferFundsRequestDTO.from_payload(payload)
+
+        container = get_container()
+        gameplay_inbound = container.gameplay_inbound_port
+        updated = gameplay_inbound.moderator_transfer_funds(
+            ModeratorTransferFundsCommand(
+                game_id=dto.game_id,
+                requested_by_user_id=dto.requested_by_user_id,
+                from_user_id=dto.from_user_id,
+                to_user_id=dto.to_user_id,
+                amount=dto.amount,
+                expected_version=dto.expected_version,
+            )
+        )
+        return self._ok(_to_game_view_dict(updated, viewer_user_id=requester_user_id, is_moderator=True))
+
+
+class ModeratorTransferInventoryItemView(BaseJsonView):
+    def post(self, request: HttpRequest, game_id: str) -> JsonResponse:
+        requester_user_id = self._require_authenticated_user_id(request)
+        payload = self._load_json_body(request)
+        payload["method"] = request.method
+        payload["game_id"] = game_id
+        payload["requested_by_user_id"] = requester_user_id
+        dto = ModeratorTransferInventoryItemRequestDTO.from_payload(payload)
+
+        container = get_container()
+        gameplay_inbound = container.gameplay_inbound_port
+        updated = gameplay_inbound.moderator_transfer_inventory_item(
+            ModeratorTransferInventoryItemCommand(
+                game_id=dto.game_id,
+                requested_by_user_id=dto.requested_by_user_id,
+                from_user_id=dto.from_user_id,
+                to_user_id=dto.to_user_id,
+                inventory_item_id=dto.inventory_item_id,
+                expected_version=dto.expected_version,
+            )
+        )
+        return self._ok(_to_game_view_dict(updated, viewer_user_id=requester_user_id, is_moderator=True))
 
 
 class RespondMoneyGiftOfferView(BaseJsonView):

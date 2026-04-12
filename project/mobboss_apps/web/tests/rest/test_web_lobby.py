@@ -12,7 +12,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from project.mobboss_apps.rooms.ports.internal import RoomDetailsSnapshot, RoomSnapshot  # noqa: E402
-from project.mobboss_apps.web.views import advance_accused_timeout, how_to_play, index, moderator_report_death, options  # noqa: E402
+from project.mobboss_apps.web.views import (  # noqa: E402
+    advance_accused_timeout,
+    how_to_play,
+    index,
+    moderator_add_funds,
+    moderator_report_death,
+    moderator_transfer_funds,
+    moderator_transfer_inventory_item,
+    options,
+)
 
 
 class _StubRoomsInboundPort:
@@ -37,6 +46,11 @@ class WebLobbyViewTests(SimpleTestCase):
     def setUp(self) -> None:
         self.factory = RequestFactory()
         self.user = type("StubUser", (), {"is_authenticated": True, "id": "u_1", "username": "player1"})()
+        self.paid_user = type(
+            "StubPaidUser",
+            (),
+            {"is_authenticated": True, "id": "u_mod", "username": "moderator", "has_moderator_access": True},
+        )()
 
     @patch("project.mobboss_apps.web.views.get_container", return_value=_StubContainer())
     def test_lobby_shows_room_full_badge_for_full_lobby_room(self, _mock_get_container) -> None:
@@ -58,6 +72,27 @@ class WebLobbyViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<form method="post" action="/rooms/create"', html=False)
         self.assertContains(response, "Create Room")
+
+    @patch("project.mobboss_apps.web.views.get_container", return_value=_StubContainer())
+    def test_lobby_prompts_for_permission_code_when_user_lacks_moderator_access(self, _mock_get_container) -> None:
+        request = self.factory.get("/")
+        request.user = self.user
+
+        response = index(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="moderator_access_code"', html=False)
+        self.assertContains(response, "Permission Code")
+
+    @patch("project.mobboss_apps.web.views.get_container", return_value=_StubContainer())
+    def test_lobby_hides_permission_code_when_user_already_has_moderator_access(self, _mock_get_container) -> None:
+        request = self.factory.get("/")
+        request.user = self.paid_user
+
+        response = index(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="moderator_access_code"', html=False)
 
     @patch("project.mobboss_apps.web.views.get_container", return_value=_StubContainer())
     def test_lobby_renders_how_to_play_link(self, _mock_get_container) -> None:
@@ -105,6 +140,9 @@ class _StubGameplayInboundForOptions:
     def __init__(self, *, status: str = "in_progress") -> None:
         self.advanced_commands = []
         self.reported_deaths = []
+        self.moderator_add_funds_commands = []
+        self.moderator_transfer_funds_commands = []
+        self.moderator_transfer_inventory_item_commands = []
         self.status = status
 
     def get_game_details(self, _game_id: str):
@@ -115,8 +153,20 @@ class _StubGameplayInboundForOptions:
             phase="accused_selection",
             pending_trial=SimpleNamespace(accused_selection_deadline_epoch_seconds=100),
             participants=[
-                SimpleNamespace(user_id="u_p1", username="player1", life_state="alive"),
-                SimpleNamespace(user_id="u_p2", username="player2", life_state="alive"),
+                SimpleNamespace(
+                    user_id="u_p1",
+                    username="player1",
+                    life_state="alive",
+                    inventory=[SimpleNamespace(item_id="inv-1", display_name="Knife")],
+                    money_balance=300,
+                ),
+                SimpleNamespace(
+                    user_id="u_p2",
+                    username="player2",
+                    life_state="alive",
+                    inventory=[],
+                    money_balance=300,
+                ),
             ],
         )
 
@@ -125,6 +175,15 @@ class _StubGameplayInboundForOptions:
 
     def report_death(self, command):
         self.reported_deaths.append(command)
+
+    def moderator_add_funds(self, command):
+        self.moderator_add_funds_commands.append(command)
+
+    def moderator_transfer_funds(self, command):
+        self.moderator_transfer_funds_commands.append(command)
+
+    def moderator_transfer_inventory_item(self, command):
+        self.moderator_transfer_inventory_item_commands.append(command)
 
 
 class _StubContainerForOptions:
@@ -158,6 +217,8 @@ class WebOptionsViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Moderator Report Death")
+        self.assertContains(response, "Transfer Funds")
+        self.assertContains(response, "Transfer Item")
 
     @patch("project.mobboss_apps.web.views.get_container")
     def test_options_hides_moderator_controls_for_non_moderator_user(self, mock_get_container) -> None:
@@ -237,6 +298,91 @@ class WebOptionsViewTests(SimpleTestCase):
         self.assertEqual(command.murderer_user_id, "u_p2")
         self.assertEqual(command.attack_classification, "knife")
         self.assertEqual(command.reported_by_user_id, "u_mod")
+
+    @patch("project.mobboss_apps.web.views.messages.success")
+    @patch("project.mobboss_apps.web.views.messages.error")
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_moderator_add_funds_endpoint_calls_gameplay_port(
+        self, mock_get_container, _mock_error, _mock_success
+    ) -> None:
+        container = _StubContainerForOptions(moderator_user_id="u_mod")
+        mock_get_container.return_value = container
+        request = self.factory.post(
+            "/options/moderator-add-funds",
+            {
+                "recipient_user_id": "u_p2",
+                "amount": "80",
+            },
+        )
+        request.user = self.moderator
+
+        response = moderator_add_funds(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/options/")
+        self.assertEqual(len(container.gameplay_inbound_port.moderator_add_funds_commands), 1)
+        command = container.gameplay_inbound_port.moderator_add_funds_commands[0]
+        self.assertEqual(command.recipient_user_id, "u_p2")
+        self.assertEqual(command.amount, 80)
+        self.assertEqual(command.requested_by_user_id, "u_mod")
+
+    @patch("project.mobboss_apps.web.views.messages.success")
+    @patch("project.mobboss_apps.web.views.messages.error")
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_moderator_transfer_funds_endpoint_calls_gameplay_port(
+        self, mock_get_container, _mock_error, _mock_success
+    ) -> None:
+        container = _StubContainerForOptions(moderator_user_id="u_mod")
+        mock_get_container.return_value = container
+        request = self.factory.post(
+            "/options/moderator-transfer-funds",
+            {
+                "from_user_id": "u_p1",
+                "to_user_id": "u_p2",
+                "amount": "50",
+            },
+        )
+        request.user = self.moderator
+
+        response = moderator_transfer_funds(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/options/")
+        self.assertEqual(len(container.gameplay_inbound_port.moderator_transfer_funds_commands), 1)
+        command = container.gameplay_inbound_port.moderator_transfer_funds_commands[0]
+        self.assertEqual(command.from_user_id, "u_p1")
+        self.assertEqual(command.to_user_id, "u_p2")
+        self.assertEqual(command.amount, 50)
+        self.assertEqual(command.requested_by_user_id, "u_mod")
+
+    @patch("project.mobboss_apps.web.views.messages.success")
+    @patch("project.mobboss_apps.web.views.messages.error")
+    @patch("project.mobboss_apps.web.views.get_container")
+    def test_moderator_transfer_inventory_item_endpoint_calls_gameplay_port(
+        self, mock_get_container, _mock_error, _mock_success
+    ) -> None:
+        container = _StubContainerForOptions(moderator_user_id="u_mod")
+        mock_get_container.return_value = container
+        request = self.factory.post(
+            "/options/moderator-transfer-inventory-item",
+            {
+                "from_user_id": "u_p1",
+                "to_user_id": "u_p2",
+                "inventory_item_id": "inv-1",
+            },
+        )
+        request.user = self.moderator
+
+        response = moderator_transfer_inventory_item(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/options/")
+        self.assertEqual(len(container.gameplay_inbound_port.moderator_transfer_inventory_item_commands), 1)
+        command = container.gameplay_inbound_port.moderator_transfer_inventory_item_commands[0]
+        self.assertEqual(command.from_user_id, "u_p1")
+        self.assertEqual(command.to_user_id, "u_p2")
+        self.assertEqual(command.inventory_item_id, "inv-1")
+        self.assertEqual(command.requested_by_user_id, "u_mod")
 
 
 class WebHowToPlayViewTests(SimpleTestCase):

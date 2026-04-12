@@ -383,10 +383,27 @@
                                             <input class="form-control form-control-sm" type="number" id="wizardKnifeCount" min="0" max="20" value="0">
                                         </div>
                                         <div>
-                                            <button class="btn btn-primary btn-sm" type="submit">Build Central Supply</button>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <button class="btn btn-primary btn-sm" type="submit">Build Central Supply</button>
+                                                {% if central_supply_presets %}
+                                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="openCentralSupplyPresets">Pre-Sets</button>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </form>
                                 </div>
+                                {% if central_supply_presets %}
+                                    <div id="centralSupplyPresetPanel" class="d-none mt-3 border rounded p-2">
+                                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                            <div class="fw-semibold">Saved Pre-Sets</div>
+                                            <button class="btn btn-outline-secondary btn-sm" type="button" id="togglePresetEditMode">Edit Pre-Sets</button>
+                                        </div>
+                                        <div class="small text-secondary mb-2">
+                                            Load a saved preset into the setup card, or switch to edit mode to rename, delete, or overwrite one.
+                                        </div>
+                                        <div class="d-flex flex-column gap-2" id="centralSupplyPresetList"></div>
+                                    </div>
+                                {% endif %}
                                 <hr class="my-3">
                                 <div id="generatedSupplySetup" class="d-none">
                                     <div class="fw-semibold mb-2">Central Supply Setup Card</div>
@@ -396,6 +413,7 @@
                                     <div class="d-flex flex-column gap-2" id="generatedSupplyRows"></div>
                                     <div class="d-flex align-items-center gap-2 mt-2">
                                         <button class="btn btn-success btn-sm" type="button" id="saveAllGeneratedRows">Save All</button>
+                                        <button class="btn btn-outline-primary btn-sm" type="button" id="saveGeneratedRowsAsPreset">Save As Pre-set</button>
                                         <span class="small text-secondary" id="saveAllGeneratedRowsStatus"></span>
                                     </div>
                                 </div>
@@ -416,7 +434,7 @@
                                             >
                                                 <span class="room-item-idx">#{{ card.index }}</span>
                                                 {% if card.tile_image_path %}
-                                                    <img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy">
+                                                    <img src="{{ card.tile_image_path }}" alt="{{ card.item.display_name }}" class="room-item-thumb-sm" width="32" height="32" loading="lazy" onerror="this.onerror=null;this.src='{{ card.fallback_image_path }}';">
                                                 {% else %}
                                                     <span class="room-item-thumb-sm room-item-thumb-empty d-flex align-items-center justify-content-center text-secondary">
                                                         <i class="bi bi-image"></i>
@@ -448,6 +466,7 @@
 {% endblock %}
 
 {% block scripts %}
+{{ central_supply_presets|json_script:"central-supply-presets-data" }}
 <script>
   (() => {
     const intervalMs = {{ room_state_poll_interval_seconds }} * 1000;
@@ -521,11 +540,27 @@
     const generatedSetup = document.getElementById("generatedSupplySetup");
     const generatedRows = document.getElementById("generatedSupplyRows");
     const saveAllButton = document.getElementById("saveAllGeneratedRows");
+    const saveAsPresetButton = document.getElementById("saveGeneratedRowsAsPreset");
     const saveAllStatus = document.getElementById("saveAllGeneratedRowsStatus");
+    const catalogPanel = document.getElementById("catalogPanel");
+    const presetToggleButton = document.getElementById("openCentralSupplyPresets");
+    const presetPanel = document.getElementById("centralSupplyPresetPanel");
+    const presetList = document.getElementById("centralSupplyPresetList");
+    const presetEditToggleButton = document.getElementById("togglePresetEditMode");
     const tierCountInputs = Array.from(document.querySelectorAll(".wizard-tier-count"));
     const secretWordInput = document.getElementById("secretMobWordInput");
     const secretWordButton = document.getElementById("secretMobWordButton");
     const secretWordForm = secretWordInput ? secretWordInput.closest("form") : null;
+    const presetDataScript = document.getElementById("central-supply-presets-data");
+    let presetLibrary = [];
+    let presetEditMode = false;
+    let catalogEditingActive = false;
+
+    try {
+      presetLibrary = presetDataScript ? JSON.parse(presetDataScript.textContent || "[]") : [];
+    } catch (error) {
+      presetLibrary = [];
+    }
 
     if (secretWordInput && secretWordButton && secretWordForm) {
       let isMaskedSecret = secretWordInput.hasAttribute("data-secret-word");
@@ -583,6 +618,17 @@
       return value - remainder;
     };
 
+    const defaultImageForClassification = (classification) => {
+      const normalized = String(classification || "").trim();
+      if (normalized === "bulletproof_vest") return "/static/items/defaults/default_bulletproof_vest.png";
+      if (normalized === "escape_from_jail") return "/static/items/defaults/default_escape_from_jail.jpg";
+      if (normalized === "gun_tier_1" || normalized.startsWith("gun_tier_1_")) return "/static/items/defaults/default_gun_tier_1.jpg";
+      if (normalized === "gun_tier_2" || normalized.startsWith("gun_tier_2_")) return "/static/items/defaults/default_gun_tier_2.jpg";
+      if (normalized === "gun_tier_3" || normalized.startsWith("gun_tier_3_")) return "/static/items/defaults/default_gun_tier_3.jpg";
+      if (normalized === "knife" || normalized.startsWith("knife_")) return "/static/items/defaults/default_knife.jpg";
+      return `/static/items/defaults/default_${normalized}.svg`;
+    };
+
     const clampCount = (raw) => Math.max(0, Math.min(20, Number.parseInt(raw || "0", 10) || 0));
 
     const gunTierLabel = (tier) => {
@@ -600,6 +646,18 @@
       }
       questionSection.classList.toggle("d-none", !isVisible);
       editWrapper.classList.toggle("d-none", isVisible);
+    };
+
+    const setCatalogPanelVisibility = (isVisible) => {
+      if (!catalogPanel) {
+        return;
+      }
+      catalogPanel.classList.toggle("d-none", !isVisible);
+    };
+
+    const setCatalogEditingState = (isActive) => {
+      catalogEditingActive = Boolean(isActive);
+      setCatalogPanelVisibility(!catalogEditingActive);
     };
 
     const loadWizardState = () => {
@@ -750,20 +808,33 @@
           <form method="post" action="/rooms/${roomId}/upsert-item" enctype="multipart/form-data" class="border rounded p-2 generated-supply-row-form">
             <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
             <input type="hidden" name="classification" value="${row.classification}">
+            <input type="hidden" name="image_path" value="${(row.imagePath || row.image_path || "").replace(/"/g, '&quot;')}">
             <div class="row g-2 align-items-end">
               <div class="col-12 col-md-4">
                 <label class="form-label form-label-sm mb-1">Name</label>
-                <input class="form-control form-control-sm" type="text" name="display_name" value="${row.displayName}" required>
+                <input class="form-control form-control-sm" type="text" name="display_name" value="${(row.displayName || row.display_name || "").replace(/"/g, '&quot;')}" required>
               </div>
               <div class="col-12 col-md-2">
                 <label class="form-label form-label-sm mb-1">Price</label>
-                <input class="form-control form-control-sm" type="number" min="0" step="1" name="base_price" value="${row.price}" required>
+                <input class="form-control form-control-sm" type="number" min="0" step="1" name="base_price" value="${row.price ?? row.base_price ?? 0}" required>
               </div>
-              <div class="col-12 col-md-4">
+              <div class="col-12 col-md-2">
+                <label class="form-label form-label-sm mb-1">Current Photo</label>
+                <div class="border rounded p-1 d-flex align-items-center justify-content-center bg-light" style="min-height: 64px;">
+                  <img
+                    src="${(row.imagePath || row.image_path || defaultImageForClassification(row.classification)).replace(/"/g, '&quot;')}"
+                    alt="${(row.displayName || row.display_name || row.classification).replace(/"/g, '&quot;')}"
+                    class="img-fluid"
+                    style="max-height: 56px;"
+                    onerror="this.onerror=null;this.src='${defaultImageForClassification(row.classification)}';"
+                  >
+                </div>
+              </div>
+              <div class="col-12 col-md-3">
                 <label class="form-label form-label-sm mb-1">Photo (optional)</label>
                 <input class="form-control form-control-sm" type="file" name="item_image" accept="image/*">
               </div>
-              <div class="col-12 col-md-2 d-grid">
+              <div class="col-12 col-md-1 d-grid">
                 <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
               </div>
             </div>
@@ -771,9 +842,108 @@
         `).join("");
       }
       generatedSetup.classList.remove("d-none");
+      setCatalogEditingState(true);
       if (saveAllStatus) {
         saveAllStatus.textContent = "";
       }
+    };
+
+    const collectGeneratedRowsPayload = () => {
+      return Array.from(document.querySelectorAll(".generated-supply-row-form")).map((form) => {
+        const classification = form.querySelector("input[name='classification']").value;
+        const displayName = form.querySelector("input[name='display_name']").value.trim();
+        const price = form.querySelector("input[name='base_price']").value;
+        const imagePath = form.querySelector("input[name='image_path']").value.trim();
+        return {
+          classification,
+          display_name: displayName,
+          base_price: price,
+          image_path: imagePath,
+        };
+      });
+    };
+
+    const appendGeneratedRowsToFormData = (formData) => {
+      const forms = Array.from(document.querySelectorAll(".generated-supply-row-form"));
+      const generatedRowsPayload = collectGeneratedRowsPayload();
+      formData.append("generated_rows", JSON.stringify(generatedRowsPayload));
+      forms.forEach((form) => {
+        const classification = form.querySelector("input[name='classification']").value;
+        const fileInput = form.querySelector("input[type='file'][name='item_image']");
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          formData.append(`item_image__${classification}`, fileInput.files[0]);
+        }
+      });
+      return generatedRowsPayload;
+    };
+
+    const postGeneratedRows = async (url, extraFields = {}) => {
+      const forms = Array.from(document.querySelectorAll(".generated-supply-row-form"));
+      if (!forms.length) {
+        throw new Error("No generated rows to save.");
+      }
+      const formData = new FormData();
+      formData.append("csrfmiddlewaretoken", csrfToken);
+      appendGeneratedRowsToFormData(formData);
+      Object.entries(extraFields).forEach(([key, value]) => formData.append(key, value));
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+        credentials: "same-origin",
+      });
+      const payload = await response.json().catch(() => ({ ok: false, error: "Request failed." }));
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Request failed.");
+      }
+      return payload.data || {};
+    };
+
+    const renderPresetList = () => {
+      if (!presetList) {
+        return;
+      }
+      if (!presetLibrary.length) {
+        presetList.innerHTML = `<div class="small text-secondary">No saved presets yet.</div>`;
+        return;
+      }
+
+      presetList.innerHTML = presetLibrary.map((preset) => `
+        <div class="border rounded p-2">
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+            <div>
+              <div class="fw-semibold">${preset.name}</div>
+              <div class="small text-secondary">
+                T1: ${preset.counts?.tier_1_gun_count ?? 0},
+                T2: ${preset.counts?.tier_2_gun_count ?? 0},
+                T3: ${preset.counts?.tier_3_gun_count ?? 0},
+                Knives: ${preset.counts?.knife_count ?? 0}
+              </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-outline-primary btn-sm" type="button" data-preset-action="load" data-preset-id="${preset.id}">Load</button>
+              <button class="btn btn-outline-secondary btn-sm ${presetEditMode ? "" : "d-none"}" type="button" data-preset-action="rename" data-preset-id="${preset.id}">Rename</button>
+              <button class="btn btn-outline-secondary btn-sm ${presetEditMode ? "" : "d-none"}" type="button" data-preset-action="overwrite" data-preset-id="${preset.id}">Overwrite</button>
+              <button class="btn btn-outline-danger btn-sm ${presetEditMode ? "" : "d-none"}" type="button" data-preset-action="delete" data-preset-id="${preset.id}">Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    };
+
+    const loadPresetIntoGeneratedRows = (preset) => {
+      if (!preset || !Array.isArray(preset.rows)) {
+        return;
+      }
+      const normalizedRows = preset.rows.map((row) => ({
+        classification: row.classification,
+        displayName: row.display_name || row.displayName,
+        price: row.base_price ?? row.price ?? 0,
+        imagePath: row.image_path || row.imagePath || "",
+      }));
+      renderGeneratedRows(normalizedRows);
+      persistWizardState({ rows: normalizedRows, built: true, savedAll: false });
+      setQuestionVisibility(false);
+      setCatalogEditingState(true);
     };
 
     tierCountInputs.forEach((input) => {
@@ -822,12 +992,17 @@
       }
       if (restoreState.savedAll) {
         generatedSetup.classList.add("d-none");
+        setCatalogEditingState(false);
       }
       if (restoreState.built || restoreState.savedAll) {
         setQuestionVisibility(false);
       }
+      if (restoreState.built && !restoreState.savedAll) {
+        setCatalogEditingState(true);
+      }
     } else {
       buildGunDetailInputs();
+      setCatalogEditingState(false);
     }
 
     wizardForm.addEventListener("submit", (event) => {
@@ -836,6 +1011,7 @@
       renderGeneratedRows(rows);
       persistWizardState({ rows, built: true, savedAll: false });
       setQuestionVisibility(false);
+      setCatalogEditingState(true);
     });
 
     if (editButton) {
@@ -846,38 +1022,20 @@
         }
         setQuestionVisibility(true);
         persistWizardState({ built: false, savedAll: false });
+        setCatalogEditingState(true);
       });
     }
 
     if (saveAllButton) {
       saveAllButton.addEventListener("click", async () => {
-        const forms = Array.from(document.querySelectorAll(".generated-supply-row-form"));
-        if (!forms.length) {
-          if (saveAllStatus) {
-            saveAllStatus.textContent = "No generated rows to save.";
-          }
-          return;
-        }
-
         saveAllButton.disabled = true;
         if (saveAllStatus) {
-          saveAllStatus.textContent = `Saving ${forms.length} items...`;
+          saveAllStatus.textContent = "Saving central supply...";
         }
         try {
-          let savedCount = 0;
-          for (const form of forms) {
-            const response = await fetch(form.action, {
-              method: "POST",
-              body: new FormData(form),
-              credentials: "same-origin",
-            });
-            if (!response.ok) {
-              throw new Error(`Failed while saving item ${savedCount + 1}.`);
-            }
-            savedCount += 1;
-          }
+          const data = await postGeneratedRows(`/rooms/${roomId}/replace-catalog`);
           if (saveAllStatus) {
-            saveAllStatus.textContent = `Saved ${savedCount} items. Refreshing...`;
+            saveAllStatus.textContent = `Saved ${data.saved_count || 0} items. Refreshing...`;
           }
           persistWizardState({ built: true, savedAll: true });
           window.location.reload();
@@ -887,6 +1045,139 @@
           }
         } finally {
           saveAllButton.disabled = false;
+        }
+      });
+    }
+
+    if (saveAsPresetButton) {
+      saveAsPresetButton.addEventListener("click", async () => {
+        const presetName = window.prompt("Name this pre-set:");
+        if (presetName === null) {
+          return;
+        }
+        const trimmedName = presetName.trim();
+        if (!trimmedName) {
+          if (saveAllStatus) {
+            saveAllStatus.textContent = "Preset name is required.";
+          }
+          return;
+        }
+
+        saveAsPresetButton.disabled = true;
+        if (saveAllStatus) {
+          saveAllStatus.textContent = "Saving pre-set...";
+        }
+        try {
+          await postGeneratedRows(`/rooms/${roomId}/presets/save`, { preset_name: trimmedName });
+          persistWizardState({ built: true, savedAll: true });
+          window.location.reload();
+        } catch (error) {
+          if (saveAllStatus) {
+            saveAllStatus.textContent = (error && error.message) ? error.message : "Save As Pre-set failed.";
+          }
+        } finally {
+          saveAsPresetButton.disabled = false;
+        }
+      });
+    }
+
+    if (presetToggleButton && presetPanel) {
+      presetToggleButton.addEventListener("click", () => {
+        presetPanel.classList.toggle("d-none");
+        renderPresetList();
+      });
+    }
+
+    if (presetEditToggleButton) {
+      presetEditToggleButton.addEventListener("click", () => {
+        presetEditMode = !presetEditMode;
+        presetEditToggleButton.textContent = presetEditMode ? "Done Editing" : "Edit Pre-Sets";
+        renderPresetList();
+      });
+    }
+
+    if (presetList) {
+      presetList.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-preset-action]");
+        if (!button) {
+          return;
+        }
+        const presetId = Number.parseInt(button.getAttribute("data-preset-id") || "", 10);
+        const action = button.getAttribute("data-preset-action");
+        const preset = presetLibrary.find((entry) => Number.parseInt(String(entry.id), 10) === presetId);
+        if (!preset || !action) {
+          return;
+        }
+
+        if (action === "load") {
+          loadPresetIntoGeneratedRows(preset);
+          if (presetPanel) {
+            presetPanel.classList.add("d-none");
+          }
+          return;
+        }
+
+        button.disabled = true;
+        try {
+          if (action === "rename") {
+            const nextName = window.prompt("Rename this pre-set:", preset.name || "");
+            if (nextName && nextName.trim()) {
+              const formData = new FormData();
+              formData.append("csrfmiddlewaretoken", csrfToken);
+              formData.append("preset_name", nextName.trim());
+              const response = await fetch(`/rooms/${roomId}/presets/${presetId}/rename`, {
+                method: "POST",
+                body: formData,
+                credentials: "same-origin",
+              });
+              const payload = await response.json();
+              if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || "Rename failed.");
+              }
+              preset.name = payload.data.preset_name;
+            }
+          } else if (action === "delete") {
+            if (!window.confirm(`Delete pre-set "${preset.name}"?`)) {
+              return;
+            }
+            const formData = new FormData();
+            formData.append("csrfmiddlewaretoken", csrfToken);
+            const response = await fetch(`/rooms/${roomId}/presets/${presetId}/delete`, {
+              method: "POST",
+              body: formData,
+              credentials: "same-origin",
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+              throw new Error(payload.error || "Delete failed.");
+            }
+            presetLibrary = presetLibrary.filter((entry) => Number.parseInt(String(entry.id), 10) !== presetId);
+          } else if (action === "overwrite") {
+            if (!window.confirm(`Overwrite pre-set "${preset.name}" with the current supply?`)) {
+              return;
+            }
+            const formData = new FormData();
+            formData.append("csrfmiddlewaretoken", csrfToken);
+            if (document.querySelectorAll(".generated-supply-row-form").length) {
+              appendGeneratedRowsToFormData(formData);
+            }
+            const response = await fetch(`/rooms/${roomId}/presets/${presetId}/overwrite`, {
+              method: "POST",
+              body: formData,
+              credentials: "same-origin",
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+              throw new Error(payload.error || "Overwrite failed.");
+            }
+          }
+          renderPresetList();
+        } catch (error) {
+          if (saveAllStatus) {
+            saveAllStatus.textContent = (error && error.message) ? error.message : "Preset action failed.";
+          }
+        } finally {
+          button.disabled = false;
         }
       });
     }

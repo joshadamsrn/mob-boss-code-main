@@ -4,6 +4,16 @@ from project.mobboss_apps.gameplay import v1_views
 urlpatterns = [
     path("", v1_views.index, name="v1-index"),
     path("games/<str:game_id>", v1_views.GameDetailView.as_view(), name="gameplay-v1-detail"),
+    path(
+        "games/<str:game_id>/send-moderator-chat",
+        v1_views.SendModeratorChatMessageView.as_view(),
+        name="gameplay-v1-send-moderator-chat",
+    ),
+    path(
+        "games/<str:game_id>/mark-moderator-chat-read",
+        v1_views.MarkModeratorChatReadView.as_view(),
+        name="gameplay-v1-mark-moderator-chat-read",
+    ),
     path("games/<str:game_id>/report-death", v1_views.ReportDeathView.as_view(), name="gameplay-v1-report-death"),
     path(
         "games/<str:game_id>/advance-accused-selection-timeout",
@@ -44,6 +54,21 @@ urlpatterns = [
         "games/<str:game_id>/give-money",
         v1_views.GiveMoneyView.as_view(),
         name="gameplay-v1-give-money",
+    ),
+    path(
+        "games/<str:game_id>/moderator-add-funds",
+        v1_views.ModeratorAddFundsView.as_view(),
+        name="gameplay-v1-moderator-add-funds",
+    ),
+    path(
+        "games/<str:game_id>/moderator-transfer-funds",
+        v1_views.ModeratorTransferFundsView.as_view(),
+        name="gameplay-v1-moderator-transfer-funds",
+    ),
+    path(
+        "games/<str:game_id>/moderator-transfer-inventory-item",
+        v1_views.ModeratorTransferInventoryItemView.as_view(),
+        name="gameplay-v1-moderator-transfer-inventory-item",
     ),
     path(
         "games/<str:game_id>/respond-money-gift-offer",

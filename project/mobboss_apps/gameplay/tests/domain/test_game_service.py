@@ -38,10 +38,16 @@ from project.mobboss_apps.gameplay.ports.internal import (  # noqa: E402
     BuyFromSupplyCommand,
     GiveMoneyCommand,
     InventoryItemStateSnapshot,
+    MarkModeratorChatReadCommand,
+    ModeratorAddFundsCommand,
+    ModeratorChatThreadSnapshot,
+    ModeratorTransferFundsCommand,
+    ModeratorTransferInventoryItemCommand,
     OfferGiftItemCommand,
     RespondMoneyGiftOfferCommand,
     RespondGiftOfferCommand,
     RespondSaleOfferCommand,
+    SendModeratorChatMessageCommand,
     KillGameCommand,
     AllowTrialVotingCommand,
     AdvanceAccusedSelectionTimeoutCommand,
@@ -143,6 +149,79 @@ class GameplayServiceTests(unittest.TestCase):
 
         fetched = self.service.get_game_details(snapshot.game_id)
         self.assertEqual(fetched.game_id, snapshot.game_id)
+
+    def test_start_session_creates_one_moderator_chat_thread_per_player(self) -> None:
+        snapshot = self.service.start_session_from_room(_build_start_session_command("start_session_information.json"))
+
+        self.assertEqual(
+            [thread.player_user_id for thread in snapshot.moderator_chat_threads],
+            [participant.user_id for participant in snapshot.participants],
+        )
+        self.assertTrue(all(thread.messages == [] for thread in snapshot.moderator_chat_threads))
+        self.assertEqual(snapshot.moderator_chat_version, 0)
+
+    def test_player_can_send_private_message_to_moderator(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_information.json"))
+        player = started.participants[0]
+
+        updated = self.service.send_moderator_chat_message(
+            SendModeratorChatMessageCommand(
+                game_id=started.game_id,
+                sender_user_id=player.user_id,
+                thread_user_id=player.user_id,
+                message_text="Need clarification from moderator",
+                expected_version=started.moderator_chat_version,
+            )
+        )
+
+        thread = next(thread for thread in updated.moderator_chat_threads if thread.player_user_id == player.user_id)
+        self.assertEqual(updated.moderator_chat_version, 1)
+        self.assertEqual(len(thread.messages), 1)
+        self.assertEqual(thread.messages[0].sender_user_id, player.user_id)
+        self.assertEqual(thread.unread_for_moderator_count, 1)
+        self.assertEqual(thread.unread_for_player_count, 0)
+
+    def test_player_cannot_send_message_into_another_players_thread(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_information.json"))
+        player = started.participants[0]
+        other_player = started.participants[1]
+
+        with self.assertRaises(PermissionError):
+            self.service.send_moderator_chat_message(
+                SendModeratorChatMessageCommand(
+                    game_id=started.game_id,
+                    sender_user_id=player.user_id,
+                    thread_user_id=other_player.user_id,
+                    message_text="This should fail",
+                    expected_version=started.moderator_chat_version,
+                )
+            )
+
+    def test_moderator_can_mark_selected_thread_read(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_information.json"))
+        player = started.participants[0]
+        with_player_message = self.service.send_moderator_chat_message(
+            SendModeratorChatMessageCommand(
+                game_id=started.game_id,
+                sender_user_id=player.user_id,
+                thread_user_id=player.user_id,
+                message_text="Private update",
+                expected_version=started.moderator_chat_version,
+            )
+        )
+
+        updated = self.service.mark_moderator_chat_read(
+            MarkModeratorChatReadCommand(
+                game_id=started.game_id,
+                viewer_user_id=started.moderator_user_id,
+                thread_user_id=player.user_id,
+                expected_version=with_player_message.moderator_chat_version,
+            )
+        )
+
+        thread = next(thread for thread in updated.moderator_chat_threads if thread.player_user_id == player.user_id)
+        self.assertEqual(thread.unread_for_moderator_count, 0)
+        self.assertEqual(thread.messages[0].body, "Private update")
 
     def test_trial_jury_selection_uses_all_eligible_players_when_three_or_fewer(self) -> None:
         participants = [
@@ -5421,6 +5500,131 @@ class GameplayServiceTests(unittest.TestCase):
             )
         self.assertEqual(exc_ctx.exception.code, "invalid_state")
         self.assertEqual(str(exc_ctx.exception), "Giver has insufficient funds.")
+
+    def test_moderator_can_add_funds_to_participant(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_police_alive.json"))
+
+        updated = self.service.moderator_add_funds(
+            ModeratorAddFundsCommand(
+                game_id=started.game_id,
+                requested_by_user_id="u_mod",
+                recipient_user_id="u_mob",
+                amount=70,
+                expected_version=started.version,
+            )
+        )
+
+        recipient = next(participant for participant in updated.participants if participant.user_id == "u_mob")
+        self.assertEqual(recipient.money_balance, 370)
+        self.assertEqual(updated.ledger.entries[-1].entry_kind, "moderator_adjustment")
+        self.assertEqual(updated.ledger.entries[-1].from_holder_id, "central_supply")
+        self.assertEqual(updated.ledger.entries[-1].to_holder_id, "u_mob")
+        self.assertEqual(updated.ledger.entries[-1].amount, 70)
+
+    def test_moderator_can_transfer_funds_between_participants(self) -> None:
+        started = self.service.start_session_from_room(_build_start_session_command("start_session_police_alive.json"))
+
+        updated = self.service.moderator_transfer_funds(
+            ModeratorTransferFundsCommand(
+                game_id=started.game_id,
+                requested_by_user_id="u_mod",
+                from_user_id="u_police",
+                to_user_id="u_mob",
+                amount=60,
+                expected_version=started.version,
+            )
+        )
+
+        source = next(participant for participant in updated.participants if participant.user_id == "u_police")
+        recipient = next(participant for participant in updated.participants if participant.user_id == "u_mob")
+        self.assertEqual(source.money_balance, 240)
+        self.assertEqual(recipient.money_balance, 360)
+        self.assertEqual(updated.ledger.entries[-1].entry_kind, "moderator_adjustment")
+        self.assertEqual(updated.ledger.entries[-1].from_holder_id, "u_police")
+        self.assertEqual(updated.ledger.entries[-1].to_holder_id, "u_mob")
+        self.assertEqual(updated.ledger.entries[-1].amount, 60)
+
+    def test_moderator_item_transfer_moves_item_and_clears_pending_item_offer(self) -> None:
+        started = self.service.start_session_from_room(
+            StartSessionFromRoomCommand(
+                room_id="r-moderator-item-transfer",
+                moderator_user_id="u_mod",
+                launched_at_epoch_seconds=111,
+                participants=[
+                    StartSessionParticipantInput(
+                        user_id="u_merchant",
+                        username="merchant",
+                        faction="Merchant",
+                        role_name="Merchant",
+                        rank=1,
+                        starting_balance=500,
+                    ),
+                    StartSessionParticipantInput(
+                        user_id="u_police",
+                        username="police",
+                        faction="Police",
+                        role_name="Chief of Police",
+                        rank=1,
+                        starting_balance=300,
+                    ),
+                    StartSessionParticipantInput(
+                        user_id="u_mob",
+                        username="mob",
+                        faction="Mob",
+                        role_name="Mob Boss",
+                        rank=1,
+                        starting_balance=300,
+                    ),
+                ],
+                catalog=[
+                    StartSessionCatalogItemInput(
+                        classification="knife",
+                        display_name="Knife",
+                        base_price=120,
+                        image_path="/static/items/defaults/default_knife.svg",
+                        is_active=True,
+                    )
+                ],
+            )
+        )
+        after_buy = self.service.buy_from_supply(
+            BuyFromSupplyCommand(
+                game_id=started.game_id,
+                buyer_user_id="u_merchant",
+                classification="knife",
+                expected_version=started.version,
+            )
+        )
+        inventory_item_id = next(
+            participant for participant in after_buy.participants if participant.user_id == "u_merchant"
+        ).inventory[0].item_id
+        after_offer = self.service.offer_gift_item(
+            OfferGiftItemCommand(
+                game_id=after_buy.game_id,
+                giver_user_id="u_merchant",
+                receiver_user_id="u_police",
+                inventory_item_id=inventory_item_id,
+                expected_version=after_buy.version,
+            )
+        )
+
+        updated = self.service.moderator_transfer_inventory_item(
+            ModeratorTransferInventoryItemCommand(
+                game_id=after_offer.game_id,
+                requested_by_user_id="u_mod",
+                from_user_id="u_merchant",
+                to_user_id="u_mob",
+                inventory_item_id=inventory_item_id,
+                expected_version=after_offer.version,
+            )
+        )
+
+        giver = next(participant for participant in updated.participants if participant.user_id == "u_merchant")
+        receiver = next(participant for participant in updated.participants if participant.user_id == "u_mob")
+        self.assertEqual(len(giver.inventory), 0)
+        self.assertEqual(len(receiver.inventory), 1)
+        self.assertEqual(receiver.inventory[0].item_id, inventory_item_id)
+        self.assertEqual(len(updated.pending_gift_offers), 0)
 
 
 if __name__ == "__main__":

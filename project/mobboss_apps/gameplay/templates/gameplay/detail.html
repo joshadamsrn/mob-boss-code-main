@@ -143,6 +143,377 @@
     font-weight: 700;
   }
 
+  .moderator-chat-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(91, 113, 139, 0.3);
+    border-radius: 0.7rem;
+    background: linear-gradient(180deg, rgba(27, 36, 50, 0.9) 0%, rgba(16, 23, 33, 0.92) 100%);
+    box-shadow: var(--app-shadow-soft);
+    padding: 1rem;
+    margin-top: 1.25rem;
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .moderator-chat-card::before {
+    content: none;
+  }
+
+  .moderator-chat-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .moderator-chat-card-head {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+  }
+
+  .moderator-chat-card-head-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+
+  .moderator-chat-card-head-toggle .bi {
+    font-size: 0.85rem;
+    opacity: 0.78;
+    transition: transform 160ms ease;
+  }
+
+  .moderator-chat-card.is-collapsed .moderator-chat-card-head-toggle .bi {
+    transform: rotate(-90deg);
+  }
+
+  .moderator-chat-card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #e7eef8;
+    margin: 0;
+  }
+
+  .moderator-chat-badge {
+    min-width: 1.5rem;
+    border-radius: 999px;
+  }
+
+  .moderator-chat-thread-list {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .moderator-chat-selector {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .moderator-chat-selector-label {
+    margin-bottom: 0.35rem;
+    color: rgba(189, 204, 221, 0.68);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.74rem;
+  }
+
+  .moderator-chat-selector-button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    width: 100%;
+    min-width: 0;
+    padding: 0.1rem 0 0.1rem 0;
+    font: inherit;
+    text-align: left;
+  }
+
+  .moderator-chat-selector-button > span:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .moderator-chat-selector-button .bi {
+    font-size: 0.8rem;
+    opacity: 0.72;
+    flex: 0 0 auto;
+    justify-self: end;
+  }
+
+  .moderator-chat-selector-menu {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    left: 0;
+    z-index: 12;
+    width: min(18rem, 82vw);
+    max-height: 16rem;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(91, 113, 139, 0.3);
+    background: linear-gradient(180deg, rgba(27, 36, 50, 0.98) 0%, rgba(16, 23, 33, 0.98) 100%);
+    box-shadow: var(--app-shadow-soft);
+  }
+
+  .moderator-chat-selector-menu.d-none {
+    display: none !important;
+  }
+
+  .moderator-chat-thread-button {
+    width: 100%;
+    border: 1px solid rgba(94, 116, 141, 0.34);
+    border-radius: 0.55rem;
+    background: rgba(14, 22, 33, 0.84);
+    text-align: left;
+    color: #d9e3ef;
+    padding: 0.62rem 0.72rem;
+    transition:
+      transform 140ms ease,
+      border-color 140ms ease,
+      background-color 140ms ease;
+  }
+
+  .moderator-chat-thread-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(124, 149, 180, 0.44);
+    background: rgba(19, 29, 42, 0.92);
+  }
+
+  .moderator-chat-thread-button.is-active {
+    border-color: rgba(137, 162, 192, 0.52);
+    background: rgba(23, 34, 49, 0.98);
+  }
+
+  .moderator-chat-thread-button.has-unread {
+    border-color: rgba(66, 152, 92, 0.54);
+    background: rgba(29, 66, 42, 0.9);
+  }
+
+  .moderator-chat-thread-button.has-unread:hover {
+    background: rgba(33, 78, 49, 0.94);
+    border-color: rgba(78, 175, 108, 0.62);
+  }
+
+  .moderator-chat-thread-button.has-unread.is-active {
+    background: rgba(36, 88, 55, 0.98);
+    border-color: rgba(97, 199, 129, 0.68);
+  }
+
+  .moderator-chat-thread-button-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .moderator-chat-thread-preview {
+    font-size: 0.88rem;
+    color: rgba(189, 204, 221, 0.68);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .moderator-chat-window {
+    border: 1px solid rgba(94, 116, 141, 0.34);
+    border-radius: 0.7rem;
+    background: rgba(14, 22, 33, 0.84);
+    padding: 0.9rem;
+    min-height: 15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .moderator-chat-card.is-collapsed .moderator-chat-window {
+    display: none;
+  }
+
+  .moderator-chat-player-card.has-unread {
+    border-color: rgba(58, 150, 85, 0.52);
+    box-shadow:
+      var(--app-shadow-soft),
+      0 0 0 0.18rem rgba(40, 167, 69, 0.14);
+    background:
+      linear-gradient(180deg, rgba(22, 46, 33, 0.94) 0%, rgba(16, 23, 33, 0.92) 100%);
+  }
+
+  .moderator-chat-window-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid rgba(94, 116, 141, 0.24);
+  }
+
+  .moderator-chat-message-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 18rem;
+    overflow-y: auto;
+    display: grid;
+    gap: 0.82rem;
+    align-content: start;
+    padding-right: 0.15rem;
+  }
+
+  .moderator-chat-message {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .moderator-chat-message.is-from-viewer {
+    align-items: flex-end;
+  }
+
+  .moderator-chat-message-bubble {
+    max-width: min(86%, 20rem);
+    border-radius: 0.95rem;
+    padding: 0.72rem 0.9rem;
+    background: rgba(31, 43, 60, 0.98);
+    border: 1px solid rgba(91, 113, 139, 0.3);
+    color: #d9e3ef;
+    white-space: pre-wrap;
+    line-height: 1.42;
+  }
+
+  .moderator-chat-message.is-from-viewer .moderator-chat-message-bubble {
+    background: rgba(55, 75, 103, 0.98);
+    border: 1px solid rgba(124, 149, 180, 0.34);
+    color: #f3f7fc;
+    border-bottom-right-radius: 0.38rem;
+  }
+
+  .moderator-chat-message:not(.is-from-viewer) .moderator-chat-message-bubble {
+    border-bottom-left-radius: 0.38rem;
+  }
+
+  .moderator-chat-message-meta {
+    font-size: 0.74rem;
+    color: rgba(189, 204, 221, 0.62);
+    padding: 0 0.2rem;
+  }
+
+  .moderator-chat-empty {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: rgba(189, 204, 221, 0.68);
+    font-size: 0.94rem;
+    border: 1px dashed rgba(94, 116, 141, 0.28);
+    border-radius: 0.7rem;
+    background: rgba(20, 30, 43, 0.7);
+    padding: 1rem;
+  }
+
+  .moderator-chat-composer {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .moderator-chat-composer textarea {
+    resize: none;
+    min-height: 4.75rem;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(94, 116, 141, 0.34);
+    background: rgba(11, 18, 27, 0.88);
+    color: #d9e3ef;
+    padding: 0.82rem 0.92rem;
+  }
+
+  .moderator-chat-composer textarea:focus {
+    border-color: rgba(124, 149, 180, 0.44);
+    box-shadow: 0 0 0 0.2rem rgba(90, 116, 148, 0.18);
+  }
+
+  .moderator-chat-composer-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .moderator-chat-player-card {
+    max-width: 24rem;
+    margin: 1.1rem auto 0;
+  }
+
+  .moderator-chat-player-card .moderator-chat-window {
+    min-height: 16.25rem;
+  }
+
+  .moderator-chat-status {
+    font-size: 0.8rem;
+    color: rgba(189, 204, 221, 0.68);
+  }
+
+  #moderatorChatCard .card-body > .d-flex:first-child .small,
+  #moderatorChatWindowHead .small {
+    color: rgba(189, 204, 221, 0.68);
+  }
+
+  #moderatorChatCard .moderator-chat-window,
+  #moderatorChatCard .moderator-chat-thread-button,
+  #playerModeratorChatCard .moderator-chat-window {
+    color: #d9e3ef;
+  }
+
+  #moderatorChatCard .h6,
+  #moderatorChatSelectedName {
+    color: #e7eef8;
+  }
+
+  #moderatorChatCard .moderator-chat-window-head {
+    background: rgba(20, 30, 43, 0.78);
+    border: 1px solid rgba(94, 116, 141, 0.24);
+    border-radius: 0.55rem;
+    padding: 0.72rem 0.78rem;
+  }
+
+  #moderatorChatCard .moderator-chat-composer-actions .btn,
+  #playerModeratorChatCard .moderator-chat-composer-actions .btn {
+    border-radius: 999px;
+    min-width: 5.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  #moderatorChatUnreadButton.is-unread {
+    --bs-btn-bg: #198754;
+    --bs-btn-border-color: #198754;
+    --bs-btn-hover-bg: #157347;
+    --bs-btn-hover-border-color: #146c43;
+    --bs-btn-active-bg: #146c43;
+    --bs-btn-active-border-color: #13653f;
+    color: #f8fff8;
+  }
+
+  #moderatorChatCard .moderator-chat-thread-button {
+    margin-bottom: 0;
+  }
+
   .role-intro-card {
     min-height: calc(100dvh - 7.5rem);
   }
@@ -305,6 +676,10 @@
       width: 7.25rem;
       max-width: 34vw;
     }
+
+    .moderator-chat-message-list {
+      max-height: 15rem;
+    }
   }
 </style>
 {% endblock %}
@@ -365,6 +740,33 @@
                             <div class="player-home-copy">
                                 <h1 class="player-home-title page-hero-title">Home Screen</h1>
                                 <div class="player-home-subtitle text-secondary">Make a selection</div>
+                            </div>
+                        </div>
+                        <div id="playerModeratorChatCard" class="moderator-chat-card moderator-chat-player-card">
+                            <div class="moderator-chat-card-head">
+                                <button id="playerModeratorChatToggle" type="button" class="moderator-chat-card-head-toggle">
+                                    <h2 class="moderator-chat-card-title mb-0">Moderator Chat</h2>
+                                    <span id="playerModeratorChatUnreadBadge" class="badge text-bg-dark moderator-chat-badge d-none">0</span>
+                                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="moderator-chat-window">
+                                <div id="playerModeratorChatThreadTitle" class="moderator-chat-status text-center">Private thread with the moderator</div>
+                                <div id="playerModeratorChatMessages" class="moderator-chat-message-list"></div>
+                                <div id="playerModeratorChatEmpty" class="moderator-chat-empty">No messages yet.</div>
+                                <form id="playerModeratorChatForm" class="moderator-chat-composer">
+                                    <textarea
+                                        id="playerModeratorChatInput"
+                                        class="form-control"
+                                        rows="3"
+                                        maxlength="500"
+                                        placeholder="Send a private message to the moderator"
+                                    ></textarea>
+                                    <div class="moderator-chat-composer-actions">
+                                        <div id="playerModeratorChatStatus" class="moderator-chat-status">Only you and the moderator can see this.</div>
+                                        <button id="playerModeratorChatSend" type="submit" class="btn btn-dark btn-sm">Send</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                         <div class="player-home-grid mt-4">
@@ -812,6 +1214,50 @@
             </div>
         {% endif %}
 
+        <div id="moderatorChatCard" class="card hero-card mb-3{% if not page.is_moderator %} d-none{% endif %}">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div>
+                        <h2 class="h6 mb-1">Moderator Chat</h2>
+                    </div>
+                    <span id="moderatorChatUnreadBadge" class="badge text-bg-dark moderator-chat-badge d-none">0</span>
+                </div>
+                <div class="moderator-chat-window">
+                    <div id="moderatorChatWindowHead" class="moderator-chat-window-head">
+                        <div class="moderator-chat-selector">
+                            <div class="moderator-chat-selector-label">Select Player</div>
+                            <button
+                                id="moderatorChatSelectorButton"
+                                type="button"
+                                class="moderator-chat-selector-button"
+                                aria-haspopup="listbox"
+                                aria-expanded="false"
+                            >
+                                <span id="moderatorChatSelectedName" class="fw-semibold">Select a player</span>
+                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                            </button>
+                            <div id="moderatorChatThreads" class="moderator-chat-selector-menu moderator-chat-thread-list d-none" role="listbox"></div>
+                        </div>
+                    </div>
+                    <div id="moderatorChatMessages" class="moderator-chat-message-list"></div>
+                    <div id="moderatorChatEmpty" class="moderator-chat-empty">No messages yet.</div>
+                    <form id="moderatorChatForm" class="moderator-chat-composer">
+                        <textarea
+                            id="moderatorChatInput"
+                            class="form-control"
+                            rows="3"
+                            maxlength="500"
+                            placeholder="Send a private message to this player"
+                        ></textarea>
+                        <div class="moderator-chat-composer-actions">
+                            <button id="moderatorChatUnreadButton" type="button" class="btn btn-dark btn-sm">Unread Message</button>
+                            <button id="moderatorChatSend" type="submit" class="btn btn-dark btn-sm">Send</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         {% include "gameplay/_merchant_inventory_card.html" with page=page %}
         {% include "gameplay/_notifications_card.html" with viewer_notifications=viewer_notifications %}
         {% include "gameplay/_superpower_card.html" with page=page superpower_panel=superpower_panel %}
@@ -843,6 +1289,7 @@
         </div>
     {% endif %}
 </section>
+{{ initial_moderator_chat|json_script:"initialModeratorChatData" }}
 {% endblock %}
 
 {% block scripts %}
@@ -1015,8 +1462,17 @@
     const initialCanSubmitAccusedSelection = {{ can_submit_accused_selection|yesno:"true,false" }};
     const initialJuryPromptCanVote = {{ jury_prompt.can_vote|yesno:"true,false" }};
     const initialJuryPromptTamperCanVote = {{ jury_prompt.tamper_can_vote|yesno:"true,false" }};
-    const gameApiQuery = isViewAsMode && asUserId ? `?as_user_id=${encodeURIComponent(asUserId)}` : "";
-    const gameApiBase = `/gameplay/v1/games/${encodeURIComponent(gameId)}${gameApiQuery}`;
+    const simulateActionsEnabled = {{ simulate_actions_enabled|yesno:"true,false" }};
+    const gameApiPath = `/gameplay/v1/games/${encodeURIComponent(gameId)}`;
+    const gameApiQueryParams = new URLSearchParams();
+    if (isViewAsMode && asUserId) {
+      gameApiQueryParams.set("as_user_id", asUserId);
+    }
+    if (isViewAsMode && simulateActionsEnabled) {
+      gameApiQueryParams.set("simulate_actions", "1");
+    }
+    const gameApiQuery = gameApiQueryParams.toString();
+    const gameApiUrl = gameApiQuery ? `${gameApiPath}?${gameApiQuery}` : gameApiPath;
     const viewerUserId = "{{ page.viewer_user_id }}";
     const isModerator = {{ page.is_moderator|yesno:"true,false" }};
     const ghostViewEnabled = {{ ghost_view_enabled|yesno:"true,false" }};
@@ -1047,6 +1503,27 @@
     const viewerNotificationsCard = document.getElementById("viewerNotificationsCard");
     const viewerNotificationsList = document.getElementById("viewerNotificationsList");
     const playerPhoneLayout = document.getElementById("playerPhoneLayout");
+    const moderatorChatCard = document.getElementById("moderatorChatCard");
+    const moderatorChatThreads = document.getElementById("moderatorChatThreads");
+    const moderatorChatUnreadBadge = document.getElementById("moderatorChatUnreadBadge");
+    const moderatorChatUnreadButton = document.getElementById("moderatorChatUnreadButton");
+    const moderatorChatSelectorButton = document.getElementById("moderatorChatSelectorButton");
+    const moderatorChatSelectedName = document.getElementById("moderatorChatSelectedName");
+    const moderatorChatMessages = document.getElementById("moderatorChatMessages");
+    const moderatorChatEmpty = document.getElementById("moderatorChatEmpty");
+    const moderatorChatForm = document.getElementById("moderatorChatForm");
+    const moderatorChatInput = document.getElementById("moderatorChatInput");
+    const moderatorChatSend = document.getElementById("moderatorChatSend");
+    const playerModeratorChatCard = document.getElementById("playerModeratorChatCard");
+    const playerModeratorChatToggle = document.getElementById("playerModeratorChatToggle");
+    const playerModeratorChatUnreadBadge = document.getElementById("playerModeratorChatUnreadBadge");
+    const playerModeratorChatThreadTitle = document.getElementById("playerModeratorChatThreadTitle");
+    const playerModeratorChatMessages = document.getElementById("playerModeratorChatMessages");
+    const playerModeratorChatEmpty = document.getElementById("playerModeratorChatEmpty");
+    const playerModeratorChatForm = document.getElementById("playerModeratorChatForm");
+    const playerModeratorChatInput = document.getElementById("playerModeratorChatInput");
+    const playerModeratorChatStatus = document.getElementById("playerModeratorChatStatus");
+    const playerModeratorChatSend = document.getElementById("playerModeratorChatSend");
     const playerNotificationOverlay = document.getElementById("playerNotificationOverlay");
     const playerNotificationOverlayTitle = document.getElementById("playerNotificationOverlayTitle");
     const playerNotificationOverlayMessage = document.getElementById("playerNotificationOverlayMessage");
@@ -1062,21 +1539,49 @@
     const expectedVersionInput = document.getElementById("expectedVersionInput");
     const expectedVersionLabel = document.getElementById("expectedVersionLabel");
     const murderedUserSelect = document.getElementById("murderedUserId");
+    const moderatorMurdererSelect = document.getElementById("moderatorMurdererId");
+    const moderatorAttackClassificationSelect = document.getElementById("moderatorAttackClassification");
     const reportDeathButton = document.getElementById("reportDeathButton");
+    const moderatorAddFundsForm = document.getElementById("moderatorAddFundsForm");
+    const moderatorAddFundsRecipientSelect = document.getElementById("moderatorAddFundsRecipientUserId");
+    const moderatorAddFundsAmountInput = document.getElementById("moderatorAddFundsAmount");
+    const moderatorAddFundsExpectedVersionInput = document.getElementById("moderatorAddFundsExpectedVersion");
+    const moderatorAddFundsButton = document.getElementById("moderatorAddFundsButton");
+    const moderatorTransferFundsForm = document.getElementById("moderatorTransferFundsForm");
+    const moderatorTransferFundsFromSelect = document.getElementById("moderatorTransferFundsFromUserId");
+    const moderatorTransferFundsToSelect = document.getElementById("moderatorTransferFundsToUserId");
+    const moderatorTransferFundsAmountInput = document.getElementById("moderatorTransferFundsAmount");
+    const moderatorTransferFundsExpectedVersionInput = document.getElementById("moderatorTransferFundsExpectedVersion");
+    const moderatorTransferFundsButton = document.getElementById("moderatorTransferFundsButton");
+    const moderatorTransferItemForm = document.getElementById("moderatorTransferItemForm");
+    const moderatorTransferItemFromSelect = document.getElementById("moderatorTransferItemFromUserId");
+    const moderatorTransferItemSelect = document.getElementById("moderatorTransferInventoryItemId");
+    const moderatorTransferItemToSelect = document.getElementById("moderatorTransferItemToUserId");
+    const moderatorTransferItemExpectedVersionInput = document.getElementById("moderatorTransferItemExpectedVersion");
+    const moderatorTransferItemButton = document.getElementById("moderatorTransferItemButton");
     const policeMobKillsValue = document.getElementById("policeMobKillsValue");
     const policeMobKillsAllowed = document.getElementById("policeMobKillsAllowed");
     const policeMobKillTracker = document.getElementById("policeMobKillTracker");
     let inFlight = false;
     let reportDeathInFlight = false;
+    let moderatorAddFundsInFlight = false;
+    let moderatorTransferFundsInFlight = false;
+    let moderatorTransferItemInFlight = false;
     let currentSnapshot = null;
     let previousActionState = null;
     let actionAudioContext = null;
     let actionAudioUnlocked = false;
     let hasCompletedInitialPhoneNotificationPass = false;
     let currentPlayerScreen = "home";
+    let currentModeratorChatThreadUserId = "";
+    let lastModeratorUnreadJumpThreadUserId = "";
+    let lastRenderedModeratorChatKey = "";
+    let lastRenderedPlayerChatKey = "";
+    let playerModeratorChatCollapsed = false;
     let notificationOverlayTimerId = null;
     let activeNotificationKey = "";
     let activeNotificationMessage = "";
+    const moderatorBroadcastThreadUserId = "__all_players__";
     const leadershipTransitionMessages = new Set([
       "You are now the Acting Chief of Police.",
       "You are now the Acting Mob Boss.",
@@ -1084,6 +1589,7 @@
     const seenNotificationKeys = new Set();
     const participantNotesStorageKey = `game:${gameId}:participant-faction-notes:${viewerUserId}`;
     const playerScreenStorageKey = `game:${gameId}:player-screen:${viewerUserId}`;
+    const playerModeratorChatCollapsedStorageKey = `game:${gameId}:player-moderator-chat-collapsed:${viewerUserId}`;
     const seenNotificationsStorageKey = `game:${gameId}:seen-notifications:${viewerUserId}`;
     const roleIntroSeenStorageKey = `game:${gameId}:role-intro-seen:${viewerUserId}`;
     const hasRoleIntroScreen = {{ role_intro_panel.show|yesno:"true,false" }};
@@ -1096,6 +1602,422 @@
       .replaceAll("'", "&#39;");
 
     const pluralize = (count, singular, plural) => (count === 1 ? singular : plural);
+    const initialModeratorChatNode = document.getElementById("initialModeratorChatData");
+    const initialModeratorChat = (() => {
+      if (!initialModeratorChatNode) {
+        return { viewer_can_send: false, viewer_unread_count: 0, threads: [] };
+      }
+      try {
+        return JSON.parse(initialModeratorChatNode.textContent || "{}");
+      } catch (error) {
+        return { viewer_can_send: false, viewer_unread_count: 0, threads: [] };
+      }
+    })();
+
+    const formatChatTimestamp = (epochSeconds) => {
+      const parsed = Number(epochSeconds);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return "";
+      }
+      try {
+        return new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(parsed * 1000));
+      } catch (error) {
+        return "";
+      }
+    };
+
+    const lifeStateLabel = (lifeState) => {
+      if (lifeState === "alive") return "Alive";
+      if (lifeState === "dead") return "Dead";
+      if (lifeState === "jailed") return "Jailed";
+      return "Unknown";
+    };
+
+    const moderatorChatStatusBadgeClass = (lifeState) => {
+      if (lifeState === "alive") return "text-bg-success";
+      if (lifeState === "jailed") return "text-bg-warning";
+      if (lifeState === "dead") return "text-bg-secondary";
+      return "text-bg-light border";
+    };
+
+    const formatModeratorChatThreadLabel = (thread) => {
+      if (!thread) {
+        return "Select Player";
+      }
+      if (thread.player_user_id === moderatorBroadcastThreadUserId) {
+        return "Send To All Players";
+      }
+      const username = String(thread.player_username || "Unknown Player").trim();
+      const roleName = String(thread.player_role_name || "").trim();
+      const status = lifeStateLabel(thread.player_life_state || "");
+      if (roleName) {
+        return `${username} - ${roleName} - ${status}`;
+      }
+      return `${username} - ${status}`;
+    };
+
+    const formatModeratorChatThreadLabelMarkup = (thread) => {
+      if (!thread) {
+        return "Select Player";
+      }
+      if (thread.player_user_id === moderatorBroadcastThreadUserId) {
+        return "Send To All Players";
+      }
+      const username = escapeHtml(String(thread.player_username || "Unknown Player").trim());
+      const roleName = escapeHtml(String(thread.player_role_name || "").trim());
+      const status = lifeStateLabel(thread.player_life_state || "");
+      const statusBadgeClass = moderatorChatStatusBadgeClass(thread.player_life_state || "");
+      const roleSegment = roleName ? ` - <span>${roleName}</span>` : "";
+      return `${username}${roleSegment} - <span class="badge ${statusBadgeClass}">${escapeHtml(status)}</span>`;
+    };
+
+    const scrollChatListToBottom = (node) => {
+      if (!node) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        node.scrollTop = node.scrollHeight;
+      });
+    };
+
+    const isPlayerHomeScreenVisible = () => usePlayerPhoneLayout && currentPlayerScreen === "home";
+
+    const applyPlayerModeratorChatCardState = () => {
+      if (!playerModeratorChatCard) {
+        return;
+      }
+      playerModeratorChatCard.classList.toggle("is-collapsed", playerModeratorChatCollapsed);
+    };
+
+    const persistPlayerModeratorChatCollapsedState = () => {
+      try {
+        window.sessionStorage.setItem(
+          playerModeratorChatCollapsedStorageKey,
+          playerModeratorChatCollapsed ? "1" : "0",
+        );
+      } catch (error) {
+        // Ignore storage failures and keep the chat usable.
+      }
+    };
+
+    const setPlayerModeratorChatCollapsed = (nextCollapsed) => {
+      playerModeratorChatCollapsed = Boolean(nextCollapsed);
+      persistPlayerModeratorChatCollapsedState();
+      applyPlayerModeratorChatCardState();
+    };
+
+    const buildChatMessagesMarkup = (messages) => {
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return "";
+      }
+      return messages.map((message) => `
+        <div class="moderator-chat-message${message && message.is_from_viewer ? " is-from-viewer" : ""}">
+          <div class="moderator-chat-message-bubble">${escapeHtml(message && message.body ? message.body : "")}</div>
+          <div class="moderator-chat-message-meta">
+            ${escapeHtml(message && message.sender_label ? message.sender_label : "")}
+            ${message && message.created_at_epoch_seconds ? ` · ${escapeHtml(formatChatTimestamp(message.created_at_epoch_seconds))}` : ""}
+          </div>
+        </div>
+      `).join("");
+    };
+
+    const getModeratorChatPayload = (snapshot) => {
+      if (snapshot && snapshot.moderator_chat && typeof snapshot.moderator_chat === "object") {
+        return snapshot.moderator_chat;
+      }
+      return { viewer_can_send: false, viewer_unread_count: 0, threads: [] };
+    };
+
+    const getSelectedModeratorChatThread = (chat) => {
+      const threads = Array.isArray(chat && chat.threads) ? chat.threads : [];
+      if (threads.length === 0) {
+        return null;
+      }
+      if (currentModeratorChatThreadUserId === moderatorBroadcastThreadUserId) {
+        return {
+          player_user_id: moderatorBroadcastThreadUserId,
+          player_username: "Send To All Players",
+          player_role_name: "",
+          player_life_state: "",
+          viewer_unread_count: 0,
+          messages: [],
+        };
+      }
+      if (currentModeratorChatThreadUserId) {
+        const selectedThread = threads.find((thread) => String(thread.player_user_id || "") === currentModeratorChatThreadUserId);
+        if (selectedThread) {
+          return selectedThread;
+        }
+      }
+      const unreadThread = threads.find((thread) => Number(thread.viewer_unread_count || 0) > 0);
+      if (unreadThread) {
+        currentModeratorChatThreadUserId = String(unreadThread.player_user_id || "");
+        return unreadThread;
+      }
+      currentModeratorChatThreadUserId = String(threads[0].player_user_id || "");
+      return threads[0];
+    };
+
+    const getModeratorUnreadThreads = (chat) => {
+      const threads = Array.isArray(chat && chat.threads) ? chat.threads : [];
+      return threads
+        .filter((thread) => Number(thread && thread.viewer_unread_count ? thread.viewer_unread_count : 0) > 0)
+        .map((thread) => {
+          const messages = Array.isArray(thread && thread.messages) ? thread.messages : [];
+          const unreadCount = Math.max(0, Number(thread && thread.viewer_unread_count ? thread.viewer_unread_count : 0));
+          const firstUnreadIndex = Math.max(0, messages.length - unreadCount);
+          const firstUnreadMessage = messages[firstUnreadIndex] || messages[0] || null;
+          return {
+            ...thread,
+            _first_unread_epoch_seconds: Number(
+              firstUnreadMessage && firstUnreadMessage.created_at_epoch_seconds
+                ? firstUnreadMessage.created_at_epoch_seconds
+                : thread && thread.latest_message_at_epoch_seconds
+                  ? thread.latest_message_at_epoch_seconds
+                  : 0
+            ),
+          };
+        })
+        .sort((left, right) => {
+          const leftEpoch = Number(left._first_unread_epoch_seconds || 0);
+          const rightEpoch = Number(right._first_unread_epoch_seconds || 0);
+          if (leftEpoch !== rightEpoch) {
+            return leftEpoch - rightEpoch;
+          }
+          return String(left.player_username || "").localeCompare(String(right.player_username || ""));
+        });
+    };
+
+    const closeModeratorChatSelector = () => {
+      if (!moderatorChatThreads || !moderatorChatSelectorButton) {
+        return;
+      }
+      moderatorChatThreads.classList.add("d-none");
+      moderatorChatSelectorButton.setAttribute("aria-expanded", "false");
+    };
+
+    const toggleModeratorChatSelector = () => {
+      if (!moderatorChatThreads || !moderatorChatSelectorButton) {
+        return;
+      }
+      const willOpen = moderatorChatThreads.classList.contains("d-none");
+      moderatorChatThreads.classList.toggle("d-none", !willOpen);
+      moderatorChatSelectorButton.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    };
+
+    const renderModeratorChat = (snapshot) => {
+      if (!moderatorChatCard || !isModerator) {
+        return;
+      }
+      const chat = getModeratorChatPayload(snapshot);
+      const threads = Array.isArray(chat.threads) ? chat.threads : [];
+      const unreadCount = Number(chat.viewer_unread_count || 0);
+      const unreadThreads = getModeratorUnreadThreads(chat);
+      if (unreadThreads.length === 0) {
+        lastModeratorUnreadJumpThreadUserId = "";
+      }
+      moderatorChatUnreadBadge.classList.toggle("d-none", unreadCount <= 0);
+      moderatorChatUnreadBadge.textContent = String(unreadCount);
+      if (moderatorChatUnreadButton) {
+        moderatorChatUnreadButton.classList.toggle("is-unread", unreadThreads.length > 0);
+        moderatorChatUnreadButton.classList.toggle("btn-success", unreadThreads.length > 0);
+        moderatorChatUnreadButton.classList.toggle("btn-dark", unreadThreads.length === 0);
+      }
+
+      if (threads.length === 0) {
+        const emptyRenderKey = `empty:${Number(snapshot && snapshot.chat_version ? snapshot.chat_version : 0)}:${unreadCount}:${Number(chat.viewer_can_send ? 1 : 0)}`;
+        if (lastRenderedModeratorChatKey === emptyRenderKey) {
+          return;
+        }
+        lastRenderedModeratorChatKey = emptyRenderKey;
+        moderatorChatThreads.innerHTML = '<div class="text-secondary small">No player threads available.</div>';
+        closeModeratorChatSelector();
+        moderatorChatMessages.innerHTML = "";
+        moderatorChatEmpty.classList.remove("d-none");
+        moderatorChatSelectedName.textContent = "No players available";
+        if (moderatorChatInput) {
+          moderatorChatInput.value = "";
+          moderatorChatInput.disabled = true;
+        }
+        if (moderatorChatSend) {
+          moderatorChatSend.disabled = true;
+        }
+        if (moderatorChatUnreadButton) {
+          moderatorChatUnreadButton.disabled = true;
+        }
+        return;
+      }
+
+      const selectedThread = getSelectedModeratorChatThread(chat);
+      const moderatorRenderKey = [
+        Number(snapshot && snapshot.chat_version ? snapshot.chat_version : 0),
+        unreadCount,
+        Number(chat.viewer_can_send ? 1 : 0),
+        threads.length,
+        String(selectedThread && selectedThread.player_user_id ? selectedThread.player_user_id : ""),
+      ].join(":");
+      if (lastRenderedModeratorChatKey === moderatorRenderKey) {
+        return;
+      }
+      lastRenderedModeratorChatKey = moderatorRenderKey;
+      moderatorChatThreads.innerHTML = threads.map((thread) => `
+        <button
+          type="button"
+          class="moderator-chat-thread-button${selectedThread && thread.player_user_id === selectedThread.player_user_id ? " is-active" : ""}${Number(thread.viewer_unread_count || 0) > 0 ? " has-unread" : ""}"
+          data-thread-user-id="${escapeHtml(thread.player_user_id || "")}"
+          role="option"
+          aria-selected="${selectedThread && thread.player_user_id === selectedThread.player_user_id ? "true" : "false"}"
+        >
+          <div class="moderator-chat-thread-button-head">
+            <div class="fw-semibold">${formatModeratorChatThreadLabelMarkup(thread)}</div>
+            ${Number(thread.viewer_unread_count || 0) > 0 ? `<span class="badge text-bg-dark moderator-chat-badge">${escapeHtml(String(thread.viewer_unread_count))}</span>` : ""}
+          </div>
+          <div class="moderator-chat-thread-preview">${escapeHtml(thread.latest_message_preview || "No messages yet.")}</div>
+        </button>
+      `).join("") + `
+        <button
+          type="button"
+          class="moderator-chat-thread-button${selectedThread && selectedThread.player_user_id === moderatorBroadcastThreadUserId ? " is-active" : ""}"
+          data-thread-user-id="${moderatorBroadcastThreadUserId}"
+          role="option"
+          aria-selected="${selectedThread && selectedThread.player_user_id === moderatorBroadcastThreadUserId ? "true" : "false"}"
+        >
+          <div class="moderator-chat-thread-button-head">
+            <div class="fw-semibold">Send To All Players</div>
+          </div>
+          <div class="moderator-chat-thread-preview">Broadcast one message to every player thread.</div>
+        </button>
+      `;
+
+      if (!selectedThread) {
+        moderatorChatMessages.innerHTML = "";
+        moderatorChatEmpty.classList.remove("d-none");
+        if (moderatorChatUnreadButton) {
+          moderatorChatUnreadButton.disabled = unreadThreads.length === 0;
+        }
+        return;
+      }
+
+      moderatorChatSelectedName.innerHTML = formatModeratorChatThreadLabelMarkup(selectedThread);
+      if (selectedThread.player_user_id === moderatorBroadcastThreadUserId) {
+        moderatorChatMessages.innerHTML = "";
+        moderatorChatEmpty.textContent = "Send one message that will be delivered to every player.";
+        moderatorChatEmpty.classList.remove("d-none");
+      } else {
+        moderatorChatMessages.innerHTML = buildChatMessagesMarkup(selectedThread.messages);
+        moderatorChatEmpty.textContent = "No messages yet.";
+        moderatorChatEmpty.classList.toggle("d-none", Array.isArray(selectedThread.messages) && selectedThread.messages.length > 0);
+      }
+      if (moderatorChatInput) {
+        moderatorChatInput.disabled = !chat.viewer_can_send;
+      }
+      if (moderatorChatSend) {
+        moderatorChatSend.disabled = !chat.viewer_can_send;
+      }
+      if (moderatorChatUnreadButton) {
+        moderatorChatUnreadButton.disabled = unreadThreads.length === 0;
+      }
+      scrollChatListToBottom(moderatorChatMessages);
+    };
+
+    const renderPlayerModeratorChat = (snapshot) => {
+      if (!playerModeratorChatCard) {
+        return;
+      }
+      const chat = getModeratorChatPayload(snapshot);
+      const thread = Array.isArray(chat.threads) && chat.threads.length > 0 ? chat.threads[0] : null;
+      const unreadCount = Number(chat.viewer_unread_count || 0);
+      const threadMessages = Array.isArray(thread && thread.messages) ? thread.messages : [];
+      const latestThreadMessage = threadMessages.length > 0 ? threadMessages[threadMessages.length - 1] : null;
+      const playerRenderKey = [
+        unreadCount,
+        Number(chat.viewer_can_send ? 1 : 0),
+        String(thread && thread.player_user_id ? thread.player_user_id : ""),
+        threadMessages.length,
+        String(latestThreadMessage && latestThreadMessage.message_id ? latestThreadMessage.message_id : ""),
+        Number(
+          latestThreadMessage && latestThreadMessage.created_at_epoch_seconds
+            ? latestThreadMessage.created_at_epoch_seconds
+            : 0
+        ),
+      ].join(":");
+      if (lastRenderedPlayerChatKey === playerRenderKey) {
+        return;
+      }
+      lastRenderedPlayerChatKey = playerRenderKey;
+      playerModeratorChatCard.classList.toggle("has-unread", unreadCount > 0);
+      playerModeratorChatUnreadBadge.classList.toggle("d-none", unreadCount <= 0);
+      playerModeratorChatUnreadBadge.textContent = String(unreadCount);
+      playerModeratorChatThreadTitle.textContent = "Private thread with the moderator";
+      if (!thread) {
+        playerModeratorChatMessages.innerHTML = "";
+        playerModeratorChatEmpty.classList.remove("d-none");
+        playerModeratorChatStatus.textContent = "Only you and the moderator can see this.";
+        if (playerModeratorChatInput) {
+          playerModeratorChatInput.disabled = true;
+        }
+        if (playerModeratorChatSend) {
+          playerModeratorChatSend.disabled = true;
+        }
+        return;
+      }
+      playerModeratorChatMessages.innerHTML = buildChatMessagesMarkup(thread.messages);
+      playerModeratorChatEmpty.classList.toggle("d-none", Array.isArray(thread.messages) && thread.messages.length > 0);
+      playerModeratorChatStatus.textContent = chat.viewer_can_send
+        ? "Only you and the moderator can see this."
+        : "Chat is read-only because the game has ended.";
+      if (playerModeratorChatInput) {
+        playerModeratorChatInput.disabled = !chat.viewer_can_send;
+      }
+      if (playerModeratorChatSend) {
+        playerModeratorChatSend.disabled = !chat.viewer_can_send;
+      }
+      scrollChatListToBottom(playerModeratorChatMessages);
+    };
+
+    const markModeratorChatRead = async (threadUserId) => {
+      if (!threadUserId || !currentSnapshot) {
+        return;
+      }
+      const chatVersion = readVersionOrNull(currentSnapshot.chat_version);
+      if (chatVersion === null) {
+        return;
+      }
+      await runVersionedMutation({
+        path: "/mark-moderator-chat-read",
+        body: {
+          thread_user_id: threadUserId,
+          expected_version: chatVersion,
+        },
+      });
+    };
+
+    const maybeMarkVisibleModeratorChatRead = () => {
+      if (!currentSnapshot) {
+        return;
+      }
+      const chat = getModeratorChatPayload(currentSnapshot);
+      if (isModerator) {
+        const selectedThread = getSelectedModeratorChatThread(chat);
+        if (
+          selectedThread
+          && selectedThread.player_user_id !== moderatorBroadcastThreadUserId
+          && Number(selectedThread.viewer_unread_count || 0) > 0
+        ) {
+          void markModeratorChatRead(selectedThread.player_user_id || "");
+        }
+        return;
+      }
+      if (usePlayerPhoneLayout && currentPlayerScreen === "home") {
+        const thread = Array.isArray(chat.threads) && chat.threads.length > 0 ? chat.threads[0] : null;
+        if (thread && Number(thread.viewer_unread_count || 0) > 0) {
+          void markModeratorChatRead(thread.player_user_id || "");
+        }
+      }
+    };
 
     const persistSeenNotificationKeys = () => {
       try {
@@ -1357,6 +2279,10 @@
       playerPhoneLayout.querySelectorAll(".player-phone-screen").forEach((screenNode) => {
         screenNode.classList.toggle("is-active", screenNode.dataset.screen === currentPlayerScreen);
       });
+      if (currentSnapshot && !isPlayerHomeScreenVisible()) {
+        applySnapshot(currentSnapshot);
+      }
+      maybeMarkVisibleModeratorChatRead();
     };
 
     const routeToWalletSaleOffers = () => {
@@ -1424,6 +2350,172 @@
           showPlayerScreen("home");
         });
       }
+    }
+
+    try {
+      playerModeratorChatCollapsed = window.sessionStorage.getItem(playerModeratorChatCollapsedStorageKey) === "1";
+    } catch (error) {
+      playerModeratorChatCollapsed = false;
+    }
+    applyPlayerModeratorChatCardState();
+
+    if (playerModeratorChatToggle) {
+      playerModeratorChatToggle.addEventListener("click", () => {
+        setPlayerModeratorChatCollapsed(!playerModeratorChatCollapsed);
+      });
+    }
+
+    if (moderatorChatThreads) {
+      moderatorChatThreads.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-thread-user-id]");
+        if (!button) {
+          return;
+        }
+        currentModeratorChatThreadUserId = button.getAttribute("data-thread-user-id") || "";
+        if (button.classList.contains("has-unread")) {
+          lastModeratorUnreadJumpThreadUserId = currentModeratorChatThreadUserId;
+        }
+        closeModeratorChatSelector();
+        renderModeratorChat(currentSnapshot);
+        maybeMarkVisibleModeratorChatRead();
+      });
+    }
+
+    if (moderatorChatSelectorButton) {
+      moderatorChatSelectorButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        toggleModeratorChatSelector();
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      if (!moderatorChatThreads || !moderatorChatSelectorButton) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (
+        moderatorChatThreads.contains(target)
+        || moderatorChatSelectorButton.contains(target)
+      ) {
+        return;
+      }
+      closeModeratorChatSelector();
+    });
+
+    if (moderatorChatForm) {
+      moderatorChatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentSnapshot) {
+          return;
+        }
+        const chat = getModeratorChatPayload(currentSnapshot);
+        const selectedThread = getSelectedModeratorChatThread(chat);
+        const messageText = moderatorChatInput ? moderatorChatInput.value.trim() : "";
+        const chatVersion = readVersionOrNull(currentSnapshot.chat_version);
+        if (!selectedThread || !messageText || chatVersion === null) {
+          setMutationNotice("Choose a player thread and enter a message.", "warning");
+          return;
+        }
+        if (selectedThread.player_user_id === moderatorBroadcastThreadUserId) {
+          const allThreads = Array.isArray(chat.threads) ? chat.threads : [];
+          if (allThreads.length === 0) {
+            setMutationNotice("No player threads are available.", "warning");
+            return;
+          }
+          let latestSnapshot = currentSnapshot;
+          for (const thread of allThreads) {
+            const expectedBroadcastVersion = readVersionOrNull(latestSnapshot && latestSnapshot.chat_version);
+            if (expectedBroadcastVersion === null) {
+              setMutationNotice("Chat state is out of sync. Retry the broadcast.", "warning");
+              return;
+            }
+            const updated = await runVersionedMutation({
+              path: "/send-moderator-chat",
+              body: {
+                thread_user_id: thread.player_user_id,
+                message_text: messageText,
+                expected_version: expectedBroadcastVersion,
+              },
+            });
+            if (!updated) {
+              return;
+            }
+            latestSnapshot = updated;
+          }
+          if (moderatorChatInput) {
+            moderatorChatInput.value = "";
+          }
+          setMutationNotice(`Message sent to ${allThreads.length} players.`, "success");
+          return;
+        }
+        const updated = await runVersionedMutation({
+          path: "/send-moderator-chat",
+          body: {
+            thread_user_id: selectedThread.player_user_id,
+            message_text: messageText,
+            expected_version: chatVersion,
+          },
+        });
+        if (updated && moderatorChatInput) {
+          moderatorChatInput.value = "";
+        }
+      });
+    }
+
+    if (moderatorChatUnreadButton) {
+      moderatorChatUnreadButton.addEventListener("click", () => {
+        if (!currentSnapshot) {
+          return;
+        }
+        const unreadThreads = getModeratorUnreadThreads(getModeratorChatPayload(currentSnapshot));
+        if (unreadThreads.length === 0) {
+          return;
+        }
+        const currentUnreadIndex = unreadThreads.findIndex(
+          (thread) => String(thread.player_user_id || "") === lastModeratorUnreadJumpThreadUserId
+        );
+        const nextUnreadThread = unreadThreads[
+          currentUnreadIndex >= 0
+            ? (currentUnreadIndex + 1) % unreadThreads.length
+            : 0
+        ];
+        currentModeratorChatThreadUserId = String(nextUnreadThread.player_user_id || "");
+        lastModeratorUnreadJumpThreadUserId = currentModeratorChatThreadUserId;
+        closeModeratorChatSelector();
+        renderModeratorChat(currentSnapshot);
+        maybeMarkVisibleModeratorChatRead();
+      });
+    }
+
+    if (playerModeratorChatForm) {
+      playerModeratorChatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentSnapshot) {
+          return;
+        }
+        const chat = getModeratorChatPayload(currentSnapshot);
+        const thread = Array.isArray(chat.threads) && chat.threads.length > 0 ? chat.threads[0] : null;
+        const messageText = playerModeratorChatInput ? playerModeratorChatInput.value.trim() : "";
+        const chatVersion = readVersionOrNull(currentSnapshot.chat_version);
+        if (!thread || !messageText || chatVersion === null) {
+          setMutationNotice("Enter a message for the moderator.", "warning");
+          return;
+        }
+        const updated = await runVersionedMutation({
+          path: "/send-moderator-chat",
+          body: {
+            thread_user_id: thread.player_user_id,
+            message_text: messageText,
+            expected_version: chatVersion,
+          },
+        });
+        if (updated && playerModeratorChatInput) {
+          playerModeratorChatInput.value = "";
+        }
+      });
     }
 
     try {
@@ -1830,6 +2922,101 @@
       return "Hidden";
     };
 
+    const moderatorParticipantOptionLabel = (participant, snapshot) => {
+      const username = String(participant && participant.username ? participant.username : "").trim() || "Unknown Player";
+      const roleText = roleLabel(participant, snapshot).replace(/^Faction:\s*/, "").replace(/^Role:\s*/, "");
+      return `${username} - ${roleText} - ${statusLabel(participant)}`;
+    };
+
+    const setSelectOptions = (select, options, emptyLabel) => {
+      if (!select) {
+        return;
+      }
+      const previousValue = String(select.value || "");
+      const markup = [
+        `<option value="">${escapeHtml(emptyLabel)}</option>`,
+        ...options.map(
+          (option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`
+        ),
+      ];
+      select.innerHTML = markup.join("");
+      if (options.some((option) => String(option.value) === previousValue)) {
+        select.value = previousValue;
+      }
+    };
+
+    const updateModeratorTransferItemOptions = (snapshot) => {
+      if (!moderatorTransferItemFromSelect || !moderatorTransferItemSelect) {
+        return;
+      }
+      const canMutate = snapshot && snapshot.status === "in_progress";
+      const sourceUserId = String(moderatorTransferItemFromSelect.value || "");
+      const participants = snapshot && Array.isArray(snapshot.participants) ? snapshot.participants : [];
+      const source = participants.find((participant) => String(participant && participant.user_id ? participant.user_id : "") === sourceUserId);
+      const inventory = Array.isArray(source && source.inventory) ? source.inventory : [];
+      const itemOptions = inventory.map((item) => ({
+        value: String(item && item.item_id ? item.item_id : ""),
+        label: String(item && item.display_name ? item.display_name : "Unknown Item"),
+      })).filter((option) => option.value);
+      setSelectOptions(
+        moderatorTransferItemSelect,
+        itemOptions,
+        sourceUserId ? "Choose item" : "Choose source first"
+      );
+      moderatorTransferItemSelect.disabled = !canMutate || !sourceUserId || itemOptions.length === 0;
+      if (!sourceUserId || itemOptions.length === 0) {
+        moderatorTransferItemSelect.value = "";
+      }
+    };
+
+    const updateModeratorAdjustmentControls = (snapshot) => {
+      if (!snapshot) {
+        return;
+      }
+      const canMutate = snapshot.status === "in_progress";
+      const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
+      const participantOptions = participants.map((participant) => ({
+        value: String(participant && participant.user_id ? participant.user_id : ""),
+        label: moderatorParticipantOptionLabel(participant, snapshot),
+      })).filter((option) => option.value);
+      const inventorySourceOptions = participants
+        .filter((participant) => Array.isArray(participant && participant.inventory) && participant.inventory.length > 0)
+        .map((participant) => ({
+          value: String(participant && participant.user_id ? participant.user_id : ""),
+          label: moderatorParticipantOptionLabel(participant, snapshot),
+        }))
+        .filter((option) => option.value);
+
+      if (moderatorAddFundsExpectedVersionInput) {
+        moderatorAddFundsExpectedVersionInput.value = String(snapshot.version);
+      }
+      if (moderatorTransferFundsExpectedVersionInput) {
+        moderatorTransferFundsExpectedVersionInput.value = String(snapshot.version);
+      }
+      if (moderatorTransferItemExpectedVersionInput) {
+        moderatorTransferItemExpectedVersionInput.value = String(snapshot.version);
+      }
+
+      setSelectOptions(moderatorAddFundsRecipientSelect, participantOptions, "Choose player");
+      setSelectOptions(moderatorTransferFundsFromSelect, participantOptions, "Choose player");
+      setSelectOptions(moderatorTransferFundsToSelect, participantOptions, "Choose player");
+      setSelectOptions(moderatorTransferItemFromSelect, inventorySourceOptions, "Choose player");
+      setSelectOptions(moderatorTransferItemToSelect, participantOptions, "Choose player");
+
+      if (moderatorAddFundsRecipientSelect) moderatorAddFundsRecipientSelect.disabled = !canMutate;
+      if (moderatorAddFundsAmountInput) moderatorAddFundsAmountInput.disabled = !canMutate;
+      if (moderatorAddFundsButton) moderatorAddFundsButton.disabled = !canMutate || moderatorAddFundsInFlight;
+      if (moderatorTransferFundsFromSelect) moderatorTransferFundsFromSelect.disabled = !canMutate;
+      if (moderatorTransferFundsToSelect) moderatorTransferFundsToSelect.disabled = !canMutate;
+      if (moderatorTransferFundsAmountInput) moderatorTransferFundsAmountInput.disabled = !canMutate;
+      if (moderatorTransferFundsButton) moderatorTransferFundsButton.disabled = !canMutate || moderatorTransferFundsInFlight;
+      if (moderatorTransferItemFromSelect) moderatorTransferItemFromSelect.disabled = !canMutate;
+      if (moderatorTransferItemToSelect) moderatorTransferItemToSelect.disabled = !canMutate;
+      if (moderatorTransferItemButton) moderatorTransferItemButton.disabled = !canMutate || moderatorTransferItemInFlight;
+
+      updateModeratorTransferItemOptions(snapshot);
+    };
+
     const noteButtonSvg = (factionGuess) => {
       if (factionGuess === "Unknown") {
         return `
@@ -2084,11 +3271,24 @@
         .map((participant) => `<option value="${escapeHtml(participant.user_id)}">${escapeHtml(participant.username)}</option>`)
         .join("");
       murderedUserSelect.innerHTML = `<option value="">Choose player</option>${aliveOptions}`;
+      if (moderatorMurdererSelect) {
+        const previousMurdererUserId = String(moderatorMurdererSelect.value || "");
+        moderatorMurdererSelect.innerHTML = `<option value="">Unknown / skip for now</option>${aliveOptions}`;
+        if (previousMurdererUserId && snapshot.participants.some((participant) => participant.life_state === "alive" && participant.user_id === previousMurdererUserId)) {
+          moderatorMurdererSelect.value = previousMurdererUserId;
+        }
+      }
 
       if (reportDeathButton) {
         const canMutate = snapshot.status === "in_progress" && !snapshot.pending_trial;
         reportDeathButton.disabled = !canMutate;
         murderedUserSelect.disabled = !canMutate;
+        if (moderatorMurdererSelect) {
+          moderatorMurdererSelect.disabled = !canMutate;
+        }
+        if (moderatorAttackClassificationSelect) {
+          moderatorAttackClassificationSelect.disabled = !canMutate;
+        }
       }
     };
 
@@ -2149,18 +3349,28 @@
       ) {
         updatePlayerActionOverlays(data);
       }
-      if (phaseBadge) phaseBadge.textContent = `Phase: ${data.phase}`;
-      if (statusBadge) statusBadge.textContent = `Status: ${data.status}`;
-      if (roundBadge) roundBadge.textContent = `Round: ${data.round_number}`;
-      updatePoliceMobKillTracker(data);
-      renderNotifications(data);
-      renderProtectiveCustody(data);
-      renderAssetFreeze(data);
-      renderSergeantCapture(data);
-      renderParticipants(data);
-      updatePlan(data.phase);
-      updateReportDeathControls(data);
-      renderPendingTrial(data);
+      const limitToHomeScreenRender = isPlayerHomeScreenVisible();
+      if (limitToHomeScreenRender) {
+        maybeShowOverlayNotification(data);
+      } else {
+        if (phaseBadge) phaseBadge.textContent = `Phase: ${data.phase}`;
+        if (statusBadge) statusBadge.textContent = `Status: ${data.status}`;
+        if (roundBadge) roundBadge.textContent = `Round: ${data.round_number}`;
+        renderNotifications(data);
+      }
+      if (!limitToHomeScreenRender) {
+        updatePoliceMobKillTracker(data);
+        renderProtectiveCustody(data);
+        renderAssetFreeze(data);
+        renderSergeantCapture(data);
+        renderModeratorChat(data);
+        renderParticipants(data);
+        updatePlan(data.phase);
+        updateReportDeathControls(data);
+        updateModeratorAdjustmentControls(data);
+        renderPendingTrial(data);
+      }
+      renderPlayerModeratorChat(data);
       const actionState = getActionPromptState(data);
       renderActionRequiredPrompt(actionState);
       if (
@@ -2188,13 +3398,20 @@
         window.location.reload();
         return;
       }
-      if (!isModerator && previousSnapshot && previousSnapshot.version !== data.version) {
+      if (
+        !isModerator
+        && previousSnapshot
+        && previousSnapshot.version !== data.version
+        && !(usePlayerPhoneLayout && currentPlayerScreen === "home")
+      ) {
         window.location.reload();
+        return;
       }
+      maybeMarkVisibleModeratorChatRead();
     };
 
     const fetchLatestSnapshot = async () => {
-      const response = await fetch(gameApiBase, {
+      const response = await fetch(gameApiUrl, {
         method: "GET",
         cache: "no-store",
         credentials: "same-origin",
@@ -2220,7 +3437,13 @@
     };
 
     const runVersionedMutation = async ({ path, body, successMessage }) => {
-      const response = await fetch(`${gameApiBase}${path}`, {
+      const mutationUrl = gameApiQuery ? `${gameApiPath}${path}?${gameApiQuery}` : `${gameApiPath}${path}`;
+      const requestBody = {
+        ...(body || {}),
+        ...(isViewAsMode && asUserId ? { as_user_id: asUserId } : {}),
+        ...(isViewAsMode && simulateActionsEnabled ? { simulate_actions: true } : {}),
+      };
+      const response = await fetch(mutationUrl, {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -2228,7 +3451,7 @@
           "X-CSRFToken": csrfToken,
           "X-Requested-With": "XMLHttpRequest"
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(requestBody)
       });
       if (response.redirected) {
         window.location.href = response.url;
@@ -2280,9 +3503,13 @@
           return;
         }
         const murderedUserId = murderedUserSelect ? murderedUserSelect.value : "";
+        const murdererUserId = moderatorMurdererSelect ? String(moderatorMurdererSelect.value || "") : "";
+        const attackClassification = moderatorAttackClassificationSelect
+          ? String(moderatorAttackClassificationSelect.value || "")
+          : "";
         const expectedVersion = readVersionOrNull(expectedVersionInput ? expectedVersionInput.value : null);
-        if (!murderedUserId || expectedVersion === null) {
-          setMutationNotice("Choose a murdered participant and valid expected version.", "warning");
+        if (!murderedUserId || !attackClassification || expectedVersion === null) {
+          setMutationNotice("Choose a murdered participant, weapon, and valid expected version.", "warning");
           return;
         }
 
@@ -2298,6 +3525,8 @@
             path: "/report-death",
             body: {
               murdered_user_id: murderedUserId,
+              murderer_user_id: murdererUserId,
+              attack_classification: attackClassification,
               expected_version: expectedVersion,
             },
             successMessage: "Death reported.",
@@ -2313,7 +3542,134 @@
             if (murderedUserSelect) {
               murderedUserSelect.disabled = false;
             }
+            if (moderatorMurdererSelect) {
+              moderatorMurdererSelect.disabled = false;
+            }
+            if (moderatorAttackClassificationSelect) {
+              moderatorAttackClassificationSelect.disabled = false;
+            }
           }
+        }
+      });
+    }
+
+    if (moderatorTransferItemFromSelect) {
+      moderatorTransferItemFromSelect.addEventListener("change", () => {
+        updateModeratorTransferItemOptions(currentSnapshot);
+      });
+    }
+
+    if (moderatorAddFundsForm) {
+      moderatorAddFundsForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (moderatorAddFundsInFlight) {
+          return;
+        }
+        const recipientUserId = moderatorAddFundsRecipientSelect ? String(moderatorAddFundsRecipientSelect.value || "") : "";
+        const amount = Number(moderatorAddFundsAmountInput ? moderatorAddFundsAmountInput.value : "");
+        const expectedVersion = readVersionOrNull(
+          moderatorAddFundsExpectedVersionInput ? moderatorAddFundsExpectedVersionInput.value : null
+        );
+        if (!recipientUserId || !Number.isFinite(amount) || amount <= 0 || expectedVersion === null) {
+          setMutationNotice("Choose a player, enter a valid amount, and retry.", "warning");
+          return;
+        }
+
+        moderatorAddFundsInFlight = true;
+        if (moderatorAddFundsButton) {
+          moderatorAddFundsButton.disabled = true;
+        }
+        try {
+          await runVersionedMutation({
+            path: "/moderator-add-funds",
+            body: {
+              recipient_user_id: recipientUserId,
+              amount: Math.trunc(amount),
+              expected_version: expectedVersion,
+            },
+            successMessage: "Funds added.",
+          });
+        } finally {
+          moderatorAddFundsInFlight = false;
+          updateModeratorAdjustmentControls(currentSnapshot);
+        }
+      });
+    }
+
+    if (moderatorTransferFundsForm) {
+      moderatorTransferFundsForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (moderatorTransferFundsInFlight) {
+          return;
+        }
+        const fromUserId = moderatorTransferFundsFromSelect ? String(moderatorTransferFundsFromSelect.value || "") : "";
+        const toUserId = moderatorTransferFundsToSelect ? String(moderatorTransferFundsToSelect.value || "") : "";
+        const amount = Number(moderatorTransferFundsAmountInput ? moderatorTransferFundsAmountInput.value : "");
+        const expectedVersion = readVersionOrNull(
+          moderatorTransferFundsExpectedVersionInput ? moderatorTransferFundsExpectedVersionInput.value : null
+        );
+        if (!fromUserId || !toUserId || fromUserId === toUserId || !Number.isFinite(amount) || amount <= 0 || expectedVersion === null) {
+          setMutationNotice("Choose different players, enter a valid amount, and retry.", "warning");
+          return;
+        }
+
+        moderatorTransferFundsInFlight = true;
+        if (moderatorTransferFundsButton) {
+          moderatorTransferFundsButton.disabled = true;
+        }
+        try {
+          await runVersionedMutation({
+            path: "/moderator-transfer-funds",
+            body: {
+              from_user_id: fromUserId,
+              to_user_id: toUserId,
+              amount: Math.trunc(amount),
+              expected_version: expectedVersion,
+            },
+            successMessage: "Funds transferred.",
+          });
+        } finally {
+          moderatorTransferFundsInFlight = false;
+          updateModeratorAdjustmentControls(currentSnapshot);
+        }
+      });
+    }
+
+    if (moderatorTransferItemForm) {
+      moderatorTransferItemForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (moderatorTransferItemInFlight) {
+          return;
+        }
+        const fromUserId = moderatorTransferItemFromSelect ? String(moderatorTransferItemFromSelect.value || "") : "";
+        const toUserId = moderatorTransferItemToSelect ? String(moderatorTransferItemToSelect.value || "") : "";
+        const inventoryItemId = moderatorTransferItemSelect ? String(moderatorTransferItemSelect.value || "") : "";
+        const expectedVersion = readVersionOrNull(
+          moderatorTransferItemExpectedVersionInput ? moderatorTransferItemExpectedVersionInput.value : null
+        );
+        if (!fromUserId || !toUserId || fromUserId === toUserId || !inventoryItemId || expectedVersion === null) {
+          setMutationNotice("Choose a source, item, recipient, and retry.", "warning");
+          return;
+        }
+
+        moderatorTransferItemInFlight = true;
+        if (moderatorTransferItemButton) {
+          moderatorTransferItemButton.disabled = true;
+        }
+        try {
+          await runVersionedMutation({
+            path: "/moderator-transfer-inventory-item",
+            body: {
+              from_user_id: fromUserId,
+              to_user_id: toUserId,
+              inventory_item_id: inventoryItemId,
+              expected_version: expectedVersion,
+            },
+            successMessage: "Item transferred.",
+          });
+        } finally {
+          moderatorTransferItemInFlight = false;
+          updateModeratorAdjustmentControls(currentSnapshot);
         }
       });
     }
@@ -2369,13 +3725,28 @@
         status: "{{ page.status|escapejs }}",
         round_number: {{ page.round_number|default:1 }},
         version: {{ page.version|default:0 }},
+        chat_version: {{ initial_chat_version|default:0 }},
+        moderator_chat: initialModeratorChat,
         can_submit_accused_selection: initialCanSubmitAccusedSelection,
         can_submit_jury_vote: initialJuryPromptCanVote,
         can_submit_tamper_vote: initialJuryPromptTamperCanVote,
         winning_faction: {% if page.status == "ended" and game_result_notice %}"ended"{% else %}""{% endif %},
       };
+      renderPlayerModeratorChat(currentSnapshot);
+      maybeMarkVisibleModeratorChatRead();
       maybeShowOverlayNotification(currentSnapshot);
       hasCompletedInitialPhoneNotificationPass = true;
+    } else if (isModerator) {
+      currentSnapshot = {
+        phase: "{{ page.phase|escapejs }}",
+        status: "{{ page.status|escapejs }}",
+        round_number: {{ page.round_number|default:1 }},
+        version: {{ page.version|default:0 }},
+        chat_version: {{ initial_chat_version|default:0 }},
+        moderator_chat: initialModeratorChat,
+      };
+      renderModeratorChat(currentSnapshot);
+      maybeMarkVisibleModeratorChatRead();
     }
 
     refreshSnapshot();

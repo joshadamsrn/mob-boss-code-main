@@ -8,6 +8,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 
 from project.mobboss_apps.mobboss.composition import get_container
+from project.mobboss_apps.mobboss.devtools import user_dev_mode_enabled
 from project.mobboss_apps.mobboss.decorators import problem_details
 from project.mobboss_apps.mobboss.exceptions import UnauthorizedProblem
 from project.mobboss_apps.rooms.ports.internal_requests_dto import (
@@ -129,7 +130,7 @@ class AssignRoleView(BaseJsonView):
     def post(self, request: HttpRequest, room_id: str) -> JsonResponse:
         user_id = self._require_authenticated_user_id(request)
         container = get_container()
-        if not container.room_dev_mode:
+        if not user_dev_mode_enabled(user=request.user, room_dev_mode=container.room_dev_mode):
             raise ValueError("Role assignment is only available in dev mode.")
         rooms_inbound = container.rooms_inbound_port
         payload = self._load_json_body(request)

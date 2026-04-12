@@ -101,6 +101,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Room dev/testing controls.
 ROOM_DEV_MODE = os.getenv("ROOM_DEV_MODE", "0") == "1"
 ROOM_MIN_LAUNCH_PLAYERS = int(os.getenv("ROOM_MIN_LAUNCH_PLAYERS", "7"))
+MODERATOR_ACCESS_CODE = os.getenv("MODERATOR_ACCESS_CODE", "adamspham")
+MODERATOR_ACCESS_GROUP_NAME = os.getenv("MODERATOR_ACCESS_GROUP_NAME", "paid_moderator")
+DEV_TOOLS_USERNAME = "devmode"
+DEV_TOOLS_PASSWORD = "devmode1234"
+DEV_TOOLS_GROUP_NAME = "dev_tools"
+DEV_TOOLS_ROOM_MIN_LAUNCH_PLAYERS = int(os.getenv("DEV_TOOLS_ROOM_MIN_LAUNCH_PLAYERS", "2"))
 
 # Room page polling configuration (seconds).
 ROOM_STATE_POLL_INTERVAL_SECONDS = int(os.getenv("ROOM_STATE_POLL_INTERVAL_SECONDS", "5"))

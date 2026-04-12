@@ -1,17 +1,40 @@
 from __future__ import annotations
 
+from dataclasses import replace
+import json
 from urllib.parse import quote_plus
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
 from project.mobboss_apps.mobboss.composition import get_container
+from project.mobboss_apps.mobboss.devtools import (
+    dev_tools_min_launch_players,
+    is_dev_tools_user,
+    user_dev_mode_enabled,
+)
+from project.mobboss_apps.mobboss.moderator_access import (
+    grant_moderator_access,
+    moderator_access_code_is_valid,
+    user_can_create_moderated_room,
+)
 from project.mobboss_apps.rooms.ports.internal import (
     ITEM_CLASSIFICATIONS,
     ITEM_CLASSIFICATION_DISPLAY_NAMES,
     REQUIRED_ROOM_ITEM_CLASSIFICATIONS,
+)
+from project.mobboss_apps.rooms.presets import (
+    MAX_ROOM_SUPPLY_PRESETS,
+    build_preset_payload_from_room_items,
+    build_preset_payload_from_rows,
+    build_room_items_from_rows,
+    default_image_path_for_classification,
+    get_room_supply_preset_for_user,
+    list_room_supply_presets_for_user,
+    normalize_generated_supply_rows,
+    preset_rows_from_payload,
 )
 from project.mobboss_apps.rooms.ports.internal_requests_dto import (
     AssignRoomRoleRequestDTO,
@@ -33,6 +56,7 @@ from project.mobboss_apps.rooms.src.room_service import (
     MERCHANT_ROLE_TITLES,
     MOB_ROLE_TITLES,
     POLICE_ROLE_TITLES,
+    RoomsService,
     minimum_launch_starting_balance,
 )
 
@@ -116,6 +140,111 @@ def _redirect_to_room_detail_with_context(request: HttpRequest, room_id: str) ->
     return redirect(_room_detail_url(room_id=room_id, as_user_id=as_user_id, simulate_actions=simulate_actions))
 
 
+def _json_error(message: str, *, status: int = 400) -> JsonResponse:
+    return JsonResponse({"ok": False, "error": message}, status=status)
+
+
+def _json_ok(data: dict[str, object] | None = None, *, status: int = 200) -> JsonResponse:
+    return JsonResponse({"ok": True, "data": data or {}}, status=status)
+
+
+def _require_moderator_lobby_room(request: HttpRequest, room_id: str, *, container):
+    room = container.rooms_inbound_port.get_room_details(room_id)
+    if room.moderator_user_id != _current_user_id(request):
+        raise PermissionError("Only moderator can manage central supply presets.")
+    if room.status != "lobby":
+        raise ValueError("Central supply presets can only be managed while the room is in lobby.")
+    return room
+
+
+def _replace_room_catalog(*, container, room, items) -> None:
+    container.rooms_outbound_port.save_room(replace(room, items=list(items)))
+
+
+def _parse_generated_supply_rows(request: HttpRequest):
+    raw_rows = str(request.POST.get("generated_rows", "")).strip()
+    if not raw_rows:
+        raise ValueError("Generated central supply rows are required.")
+    try:
+        payload = json.loads(raw_rows)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Invalid generated central supply payload.") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Generated central supply payload must be a list.")
+    dict_rows = [row for row in payload if isinstance(row, dict)]
+    if len(dict_rows) != len(payload):
+        raise ValueError("Generated central supply payload contains invalid rows.")
+    rows = normalize_generated_supply_rows(dict_rows)
+    if not rows:
+        raise ValueError("At least one central supply item is required.")
+    return rows
+
+
+def _room_rows_with_saved_images(request: HttpRequest, rows, *, room_id: str, container):
+    room_rows = []
+    room_item_media_outbound = container.room_item_media_outbound_port
+    for row in rows:
+        upload_key = f"item_image__{row.classification}"
+        if upload_key in request.FILES:
+            upload = request.FILES[upload_key]
+            image_path = room_item_media_outbound.save_room_item_image(
+                room_id=room_id,
+                classification=row.classification,
+                original_filename=upload.name,
+                chunks=upload.chunks(),
+            )
+        else:
+            image_path = row.image_path or default_image_path_for_classification(row.classification)
+        room_rows.append(replace(row, image_path=image_path))
+    return room_rows
+
+
+def _preset_rows_with_saved_images(request: HttpRequest, rows, *, preset, container):
+    preset_rows = []
+    room_item_media_outbound = container.room_item_media_outbound_port
+    for row in rows:
+        upload_key = f"item_image__{row.classification}"
+        if upload_key in request.FILES:
+            upload = request.FILES[upload_key]
+            image_path = room_item_media_outbound.save_preset_item_image(
+                user_id=str(request.user.id),
+                preset_id=preset.id,
+                classification=row.classification,
+                original_filename=upload.name,
+                chunks=upload.chunks(),
+            )
+        else:
+            source_image_path = row.image_path or default_image_path_for_classification(row.classification)
+            image_path = room_item_media_outbound.clone_item_image_to_preset(
+                user_id=str(request.user.id),
+                preset_id=preset.id,
+                classification=row.classification,
+                source_image_path=source_image_path,
+            ) or source_image_path
+        preset_rows.append(replace(row, image_path=image_path or default_image_path_for_classification(row.classification)))
+    return preset_rows
+
+
+def _request_dev_mode_enabled(request: HttpRequest, *, container) -> bool:
+    return user_dev_mode_enabled(user=request.user, room_dev_mode=container.room_dev_mode)
+
+
+def _effective_launch_min_players(request: HttpRequest, *, container) -> int:
+    if container.room_dev_mode or not is_dev_tools_user(request.user):
+        return container.room_min_launch_players
+    return dev_tools_min_launch_players()
+
+
+def _rooms_inbound_for_launch(request: HttpRequest, *, container):
+    if container.room_dev_mode or not is_dev_tools_user(request.user):
+        return container.rooms_inbound_port
+    return RoomsService(
+        repository=container.rooms_outbound_port,
+        minimum_launch_players=dev_tools_min_launch_players(),
+        gameplay_inbound_port=container.gameplay_inbound_port,
+    )
+
+
 def _set_active_game_session(request: HttpRequest, *, game_id: str, room_id: str) -> None:
     session_store = getattr(request, "session", None)
     if session_store is None:
@@ -137,6 +266,13 @@ def create_room(request: HttpRequest) -> HttpResponse:
         return redirect("web-lobby")
 
     try:
+        if not user_can_create_moderated_room(request.user):
+            submitted_code = request.POST.get("moderator_access_code", "")
+            if not moderator_access_code_is_valid(submitted_code):
+                raise PermissionError("Valid moderator permission code required to create a room.")
+            if not grant_moderator_access(request.user):
+                raise PermissionError("Unable to save moderator access for this account.")
+
         payload = {
             "name": request.POST.get("name", ""),
             "creator_user_id": _current_user_id(request),
@@ -198,7 +334,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
 
         joined_members = [member for member in room.members if member.membership_status == "joined"]
         actor_current_member = next((member for member in joined_members if member.user_id == actor_user_id), None)
-        dev_mode_enabled = container.room_dev_mode
+        dev_mode_enabled = _request_dev_mode_enabled(request, container=container)
 
         requested_view_as_user_id = str(request.GET.get("as_user_id", "")).strip()
         requested_simulate_actions = _parse_bool_flag(request.GET.get("simulate_actions", ""))
@@ -216,7 +352,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
         moderator_member = next((member for member in room.members if member.user_id == room.moderator_user_id), None)
         player_member_rows = [member for member in room.members if member.user_id != room.moderator_user_id]
         player_count = len(player_members)
-        launch_min_players = container.room_min_launch_players
+        launch_min_players = _effective_launch_min_players(request, container=container)
         total_player_starting_balance = max(
             sum(member.starting_balance for member in player_members),
             minimum_launch_starting_balance(launch_min_players),
@@ -238,7 +374,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
             and secret_word_ready
             and central_supply_ready
         )
-        dev_launch_override_active = container.room_dev_mode and launch_min_players != 7
+        dev_launch_override_active = dev_mode_enabled and launch_min_players != 7
         room_state_poll_interval_seconds = container.room_state_poll_interval_seconds
         waitlist = []
         dev_seat_user_ids = [member.user_id for member in room.members if _is_dev_seat_user_id(member.user_id)]
@@ -280,6 +416,7 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 "item": item,
                 "full_image_path": item.image_path,
                 "tile_image_path": room_item_media_outbound.resolve_room_item_tile_image_url(item.image_path),
+                "fallback_image_path": default_image_path_for_classification(item.classification),
                 "classification_display_name": ITEM_CLASSIFICATION_DISPLAY_NAMES.get(
                     item.classification, item.classification
                 ),
@@ -287,6 +424,11 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
             }
             for idx, item in enumerate(room.items, start=1)
         ]
+        central_supply_presets = (
+            list_room_supply_presets_for_user(request.user)
+            if actor_is_moderator and is_lobby and not is_view_as_mode
+            else []
+        )
 
         return render(
             request,
@@ -327,6 +469,8 @@ def detail(request: HttpRequest, room_id: str) -> HttpResponse:
                 "view_tabs": view_tabs,
                 "role_assignment_choices": _ROLE_ASSIGNMENT_CHOICES,
                 "room_state_poll_interval_seconds": room_state_poll_interval_seconds,
+                "central_supply_presets": central_supply_presets,
+                "max_room_supply_presets": MAX_ROOM_SUPPLY_PRESETS,
             },
         )
     except Exception as exc:
@@ -368,7 +512,7 @@ def add_dev_seat(request: HttpRequest, room_id: str) -> HttpResponse:
     try:
         actor_user_id = _current_user_id(request)
         container = get_container()
-        if not container.room_dev_mode:
+        if not _request_dev_mode_enabled(request, container=container):
             raise PermissionError("Dev seat controls are disabled.")
         rooms_inbound = container.rooms_inbound_port
         room = rooms_inbound.get_room_details(room_id)
@@ -404,7 +548,7 @@ def remove_dev_seat(request: HttpRequest, room_id: str) -> HttpResponse:
         if not _is_dev_seat_user_id(seat_user_id):
             raise ValueError("Target is not a dev seat.")
         container = get_container()
-        if not container.room_dev_mode:
+        if not _request_dev_mode_enabled(request, container=container):
             raise PermissionError("Dev seat controls are disabled.")
         rooms_inbound = container.rooms_inbound_port
         room = rooms_inbound.get_room_details(room_id)
@@ -428,7 +572,7 @@ def mark_all_ready(request: HttpRequest, room_id: str) -> HttpResponse:
     try:
         actor_user_id = _current_user_id(request)
         container = get_container()
-        if not container.room_dev_mode:
+        if not _request_dev_mode_enabled(request, container=container):
             raise PermissionError("Dev ready controls are disabled.")
         rooms_inbound = container.rooms_inbound_port
         room = rooms_inbound.get_room_details(room_id)
@@ -484,7 +628,7 @@ def assign_role(request: HttpRequest, room_id: str) -> HttpResponse:
         return redirect("rooms-detail", room_id=room_id)
     try:
         container = get_container()
-        if not container.room_dev_mode:
+        if not _request_dev_mode_enabled(request, container=container):
             raise ValueError("Role assignment is only available in dev mode.")
         resolved_role = _resolve_role_assignment_payload(request)
         payload = {
@@ -553,10 +697,12 @@ def upsert_item(request: HttpRequest, room_id: str) -> HttpResponse:
                 chunks=upload.chunks(),
             )
         else:
-            room = rooms_inbound.get_room_details(base_dto.room_id)
-            existing_item = next((item for item in room.items if item.classification == base_dto.classification), None)
-            if existing_item is not None:
-                image_path = existing_item.image_path
+            image_path = str(request.POST.get("image_path", "")).strip()
+            if not image_path:
+                room = rooms_inbound.get_room_details(base_dto.room_id)
+                existing_item = next((item for item in room.items if item.classification == base_dto.classification), None)
+                if existing_item is not None:
+                    image_path = existing_item.image_path
 
         dto = UpsertRoomItemRequestDTO.from_payload(
             {
@@ -573,6 +719,108 @@ def upsert_item(request: HttpRequest, room_id: str) -> HttpResponse:
     except Exception as exc:
         messages.error(request, str(exc))
     return redirect("rooms-detail", room_id=room_id)
+
+
+@login_required(login_url="/auth/")
+def replace_catalog(request: HttpRequest, room_id: str) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("POST required.", status=405)
+    try:
+        container = get_container()
+        room = _require_moderator_lobby_room(request, room_id, container=container)
+        rows = _parse_generated_supply_rows(request)
+        room_rows = _room_rows_with_saved_images(request, rows, room_id=room_id, container=container)
+        _replace_room_catalog(container=container, room=room, items=build_room_items_from_rows(room_rows))
+        return _json_ok({"saved_count": len(room_rows)})
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
+@login_required(login_url="/auth/")
+def save_catalog_as_preset(request: HttpRequest, room_id: str) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("POST required.", status=405)
+    try:
+        preset_name = str(request.POST.get("preset_name", "")).strip()
+        if not preset_name:
+            raise ValueError("Preset name is required.")
+
+        existing_presets = list_room_supply_presets_for_user(request.user)
+        if len(existing_presets) >= MAX_ROOM_SUPPLY_PRESETS:
+            raise ValueError(f"You can save up to {MAX_ROOM_SUPPLY_PRESETS} presets. Overwrite one or cancel.")
+
+        container = get_container()
+        room = _require_moderator_lobby_room(request, room_id, container=container)
+        rows = _parse_generated_supply_rows(request)
+        from rooms.models import RoomSupplyPreset
+
+        preset = RoomSupplyPreset.objects.create(user_id=request.user.id, name=preset_name, payload={})
+        preset_rows = _preset_rows_with_saved_images(request, rows, preset=preset, container=container)
+        room_rows = [replace(row, image_path=row.image_path) for row in preset_rows]
+        preset.payload = build_preset_payload_from_rows(preset_rows)
+        preset.save(update_fields=["payload", "updated_at"])
+
+        _replace_room_catalog(container=container, room=room, items=build_room_items_from_rows(room_rows))
+        return _json_ok({"preset_id": preset.id, "preset_name": preset.name, "saved_count": len(room_rows)}, status=201)
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
+@login_required(login_url="/auth/")
+def rename_preset(request: HttpRequest, room_id: str, preset_id: int) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("POST required.", status=405)
+    try:
+        _require_moderator_lobby_room(request, room_id, container=get_container())
+        preset = get_room_supply_preset_for_user(request.user, preset_id)
+        preset_name = str(request.POST.get("preset_name", "")).strip()
+        if not preset_name:
+            raise ValueError("Preset name is required.")
+        preset.name = preset_name
+        preset.save(update_fields=["name", "updated_at"])
+        return _json_ok({"preset_id": preset.id, "preset_name": preset.name})
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
+@login_required(login_url="/auth/")
+def delete_preset(request: HttpRequest, room_id: str, preset_id: int) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("POST required.", status=405)
+    try:
+        _require_moderator_lobby_room(request, room_id, container=get_container())
+        preset = get_room_supply_preset_for_user(request.user, preset_id)
+        preset.delete()
+        return _json_ok({"preset_id": preset_id, "deleted": True})
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
+@login_required(login_url="/auth/")
+def overwrite_preset(request: HttpRequest, room_id: str, preset_id: int) -> JsonResponse:
+    if request.method != "POST":
+        return _json_error("POST required.", status=405)
+    try:
+        container = get_container()
+        room = _require_moderator_lobby_room(request, room_id, container=container)
+        preset = get_room_supply_preset_for_user(request.user, preset_id)
+
+        rows = []
+        raw_rows = str(request.POST.get("generated_rows", "")).strip()
+        if raw_rows:
+            rows = _parse_generated_supply_rows(request)
+        else:
+            payload = build_preset_payload_from_room_items(room.items)
+            rows = preset_rows_from_payload(payload)
+        if not rows:
+            raise ValueError("No central supply items are available to overwrite this preset.")
+
+        preset_rows = _preset_rows_with_saved_images(request, rows, preset=preset, container=container)
+        preset.payload = build_preset_payload_from_rows(preset_rows)
+        preset.save(update_fields=["payload", "updated_at"])
+        return _json_ok({"preset_id": preset.id, "preset_name": preset.name})
+    except Exception as exc:
+        return _json_error(str(exc))
 
 
 @login_required(login_url="/auth/")
@@ -616,7 +864,7 @@ def launch_game(request: HttpRequest, room_id: str) -> HttpResponse:
     try:
         dto = LaunchGameFromRoomRequestDTO.from_payload({"room_id": room_id, "requested_by_user_id": _current_user_id(request)})
         container = get_container()
-        rooms_inbound = container.rooms_inbound_port
+        rooms_inbound = _rooms_inbound_for_launch(request, container=container)
         game_id = rooms_inbound.launch_game_from_room(dto.to_command())
         _set_active_game_session(request, game_id=game_id, room_id=room_id)
         messages.success(request, f"Game launched: {game_id}")

@@ -14,6 +14,8 @@ from project.mobboss_apps.gameplay.ports.internal import (
     InventoryItemStateSnapshot,
     LedgerEntrySnapshot,
     LedgerStateSnapshot,
+    ModeratorChatMessageSnapshot,
+    ModeratorChatThreadSnapshot,
     MoneyGiftOfferSnapshot,
     NotificationEventSnapshot,
     ParticipantStateSnapshot,
@@ -86,6 +88,24 @@ def _snapshot_to_record(snapshot: GameDetailsSnapshot) -> dict[str, object]:
         "asset_freeze_user_id": snapshot.asset_freeze_user_id,
         "asset_freeze_by_user_id": snapshot.asset_freeze_by_user_id,
         "asset_freeze_expires_at_epoch_seconds": snapshot.asset_freeze_expires_at_epoch_seconds,
+        "moderator_chat_version": snapshot.moderator_chat_version,
+        "moderator_chat_threads": [
+            {
+                "player_user_id": thread.player_user_id,
+                "unread_for_player_count": thread.unread_for_player_count,
+                "unread_for_moderator_count": thread.unread_for_moderator_count,
+                "messages": [
+                    {
+                        "message_id": message.message_id,
+                        "sender_user_id": message.sender_user_id,
+                        "body": message.body,
+                        "created_at_epoch_seconds": message.created_at_epoch_seconds,
+                    }
+                    for message in thread.messages
+                ],
+            }
+            for thread in snapshot.moderator_chat_threads
+        ],
         "sergeant_capture_user_id": snapshot.sergeant_capture_user_id,
         "sergeant_capture_by_user_id": snapshot.sergeant_capture_by_user_id,
         "sergeant_capture_expires_at_epoch_seconds": snapshot.sergeant_capture_expires_at_epoch_seconds,
@@ -442,6 +462,24 @@ def _record_to_snapshot(record: dict[str, object]) -> GameDetailsSnapshot:
         asset_freeze_user_id=_as_optional_str(payload.get("asset_freeze_user_id")),
         asset_freeze_by_user_id=_as_optional_str(payload.get("asset_freeze_by_user_id")),
         asset_freeze_expires_at_epoch_seconds=_as_optional_int(payload.get("asset_freeze_expires_at_epoch_seconds")),
+        moderator_chat_version=int(payload.get("moderator_chat_version", 0)),
+        moderator_chat_threads=[
+            ModeratorChatThreadSnapshot(
+                player_user_id=str(thread["player_user_id"]),
+                unread_for_player_count=int(thread.get("unread_for_player_count", 0)),
+                unread_for_moderator_count=int(thread.get("unread_for_moderator_count", 0)),
+                messages=[
+                    ModeratorChatMessageSnapshot(
+                        message_id=str(message["message_id"]),
+                        sender_user_id=str(message["sender_user_id"]),
+                        body=str(message["body"]),
+                        created_at_epoch_seconds=int(message["created_at_epoch_seconds"]),
+                    )
+                    for message in thread.get("messages", [])
+                ],
+            )
+            for thread in payload.get("moderator_chat_threads", [])
+        ],
         sergeant_capture_user_id=_as_optional_str(payload.get("sergeant_capture_user_id")),
         sergeant_capture_by_user_id=_as_optional_str(payload.get("sergeant_capture_by_user_id")),
         sergeant_capture_expires_at_epoch_seconds=_as_optional_int(payload.get("sergeant_capture_expires_at_epoch_seconds")),

@@ -24,12 +24,30 @@
                             <label class="form-label mb-1" for="roomName">Room Name</label>
                             <input id="roomName" name="name" class="form-control" maxlength="100" required>
                         </div>
+                        {% if not moderator_access_unlocked %}
+                            <div class="flex-grow-1">
+                                <label class="form-label mb-1" for="moderatorAccessCode">Permission Code</label>
+                                <input
+                                    id="moderatorAccessCode"
+                                    name="moderator_access_code"
+                                    class="form-control"
+                                    maxlength="100"
+                                    autocomplete="off"
+                                    required
+                                >
+                            </div>
+                        {% endif %}
                         <div>
                             <button type="submit" class="btn btn-dark btn-sm w-100">
                                 <i class="bi bi-plus-lg"></i> Create Room
                             </button>
                         </div>
                     </form>
+                    {% if not moderator_access_unlocked %}
+                        <p class="small text-secondary mt-2 mb-0">
+                            Enter your moderator permission code once. This account will remember it for future rooms.
+                        </p>
+                    {% endif %}
                 </div>
             </div>
 

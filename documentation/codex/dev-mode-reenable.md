@@ -29,6 +29,18 @@ export ROOM_MIN_LAUNCH_PLAYERS=2
 
 Then restart the Django process being used for testing.
 
+## Dedicated dev account
+
+The auth flow always auto-provisions a dedicated dev-tools account on the login page.
+
+Built-in credentials:
+- username: `devmode`
+- password: `devmode1234`
+
+The user types that username and password into the normal login form.
+
+The dedicated account is tagged with the `dev_tools` group and can access the room/gameplay dev-mode UI even if the global room dev flag is off.
+
 If full normal behavior is desired again:
 
 ```bash

@@ -30,6 +30,9 @@ class IamService(IamInboundPort):
         if request.user.is_authenticated:
             return IamAuthPageResult(login_form=None, signup_form=None, redirect_to="web-lobby")
 
+        from project.mobboss_apps.mobboss.devtools import ensure_dev_tools_account
+
+        ensure_dev_tools_account()
         login_form = self._auth_gateway.build_login_form(request=request)
         signup_form = self._auth_gateway.build_signup_form()
 
@@ -61,4 +64,3 @@ class IamService(IamInboundPort):
         for field in form.fields.values():
             existing = field.widget.attrs.get("class", "")
             field.widget.attrs["class"] = f"{existing} form-control".strip()
-
