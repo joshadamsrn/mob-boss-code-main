@@ -63,7 +63,7 @@ if [[ ! -f "${SSH_KEY}" ]]; then
   exit 1
 fi
 
-SSH_ARGS=(-tt -i "${SSH_KEY}" -o BatchMode=yes -o StrictHostKeyChecking=ask)
+SSH_ARGS=(-tt -i "${SSH_KEY}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
 run_remote() {
   local cmd="$1"
