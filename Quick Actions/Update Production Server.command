@@ -7,6 +7,7 @@ SSH_BIN="/usr/bin/ssh"
 OSA_BIN="/usr/bin/osascript"
 TARGET_HOST="root@134.199.226.15"
 SSH_KEY="${HOME}/.ssh/id_ed25519"
+CONTROL_SOCKET="/tmp/mobboss-prod-ssh-control"
 DEPLOYED_COMMIT=""
 MOBBOSS_RECOVERY_NEEDED="No"
 FINAL_SYSTEMCTL_STATUS=""
@@ -50,6 +51,13 @@ fail_deploy() {
   exit 1
 }
 
+cleanup_ssh_master() {
+  "${SSH_BIN}" -O exit -o ControlPath="${CONTROL_SOCKET}" "${TARGET_HOST}" >/dev/null 2>&1 || true
+  rm -f "${CONTROL_SOCKET}" >/dev/null 2>&1 || true
+}
+
+trap cleanup_ssh_master EXIT
+
 if [[ ! -f "${REPO_DIR}/documentation/deployment/README.md" ]]; then
   show_error "Error: Missing documentation/deployment/README.md"
   exit 1
@@ -63,7 +71,22 @@ if [[ ! -f "${SSH_KEY}" ]]; then
   exit 1
 fi
 
-SSH_ARGS=(-tt -i "${SSH_KEY}" -o BatchMode=no -o StrictHostKeyChecking=accept-new)
+SSH_ARGS=(
+  -tt
+  -i "${SSH_KEY}"
+  -o BatchMode=no
+  -o StrictHostKeyChecking=accept-new
+  -o ControlMaster=auto
+  -o ControlPersist=600
+  -o ControlPath="${CONTROL_SOCKET}"
+)
+
+log_section "SSH Connection"
+echo "Opening reusable SSH session to ${TARGET_HOST}"
+if ! "${SSH_BIN}" "${SSH_ARGS[@]}" "${TARGET_HOST}" "exit" 2>&1; then
+  show_error "Error: Could not open SSH session to ${TARGET_HOST}. If key auth is not accepted, enter the server password when prompted in Terminal."
+  exit 1
+fi
 
 run_remote() {
   local cmd="$1"
