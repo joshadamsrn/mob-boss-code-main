@@ -8,7 +8,7 @@
     "watch": "webpack --config webpack.config.js --mode development --watch",
     "dev": "webpack --config webpack.config.js --mode development --watch",
     "test": "npm run python:test",
-    "python:test": ".venv\\Scripts\\python.exe -m unittest discover -s project/mobboss_apps/tests -p \"test_*.py\" -v"
+    "python:test": "./.venv/bin/python -m pytest project/mobboss_apps -q"
   },
   "dependencies": {
     "bootstrap": "^5.3.3",

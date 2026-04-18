@@ -17,6 +17,8 @@ from project.mobboss_apps.rooms.ports.internal import (  # noqa: E402
     CreateRoomCommand,
     JoinRoomCommand,
     LaunchGameFromRoomCommand,
+    SetMobSecretWordCommand,
+    UpsertRoomItemCommand,
 )
 from project.mobboss_apps.rooms.src.room_service import RoomsService  # noqa: E402
 
@@ -31,6 +33,22 @@ class RoomLifecycleSyncAdapterTests(unittest.TestCase):
             CreateRoomCommand(name="Lifecycle Room", creator_user_id="u_mod", creator_username="mod")
         )
         self.rooms_service.join_room(JoinRoomCommand(room_id=room.room_id, user_id="u_1", username="p1"))
+        self.rooms_service.set_mob_secret_word(
+            SetMobSecretWordCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                secret_mob_word="RAVEN",
+            )
+        )
+        self.rooms_service.upsert_room_item(
+            UpsertRoomItemCommand(
+                room_id=room.room_id,
+                moderator_user_id="u_mod",
+                classification="knife",
+                display_name="Knife",
+                base_price=100,
+            )
+        )
         game_id = self.rooms_service.launch_game_from_room(
             LaunchGameFromRoomCommand(room_id=room.room_id, requested_by_user_id="u_mod")
         )

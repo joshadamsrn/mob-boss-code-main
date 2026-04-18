@@ -1,0 +1,13 @@
+#!/bin/zsh
+
+set -u
+
+REPO_DIR="/Users/joshadams/Desktop/Coding Projects/mob-boss-code-main"
+COMMAND_FILE="${REPO_DIR}/Quick Actions/Commit and Push.command"
+
+if [[ ! -f "${COMMAND_FILE}" ]]; then
+  /usr/bin/osascript -e 'display dialog "Missing Commit and Push.command file." buttons {"OK"} default button "OK" with icon stop'
+  exit 1
+fi
+
+/usr/bin/open -a Terminal "${COMMAND_FILE}"
