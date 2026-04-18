@@ -72,9 +72,9 @@ run_remote() {
   echo
   echo "\$ ${cmd}"
   output="$("${SSH_BIN}" "${SSH_ARGS[@]}" "${TARGET_HOST}" "${cmd}" 2>&1)"
-  local status=$?
+  local exit_code=$?
   printf '%s\n' "${output}"
-  if [[ ${status} -ne 0 ]]; then
+  if [[ ${exit_code} -ne 0 ]]; then
     fail_deploy "Command failed: ${cmd}
 
 ${output}"
@@ -89,10 +89,10 @@ run_remote_allow_fail() {
   echo
   echo "\$ ${cmd}"
   output="$("${SSH_BIN}" "${SSH_ARGS[@]}" "${TARGET_HOST}" "${cmd}" 2>&1)"
-  local status=$?
+  local exit_code=$?
   printf '%s\n' "${output}"
   REPLY="${output}"
-  return ${status}
+  return ${exit_code}
 }
 
 extract_commit_hash() {
