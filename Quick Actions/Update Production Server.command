@@ -5,7 +5,8 @@ set -u
 REPO_DIR="/Users/joshadams/Desktop/Coding Projects/mob-boss-code-main"
 SSH_BIN="/usr/bin/ssh"
 OSA_BIN="/usr/bin/osascript"
-TARGET_HOST="root@134.199.226.15"
+RAW_TARGET_HOST="root@134.199.226.15"
+TARGET_HOST="${RAW_TARGET_HOST}"
 SSH_KEY="${HOME}/.ssh/id_ed25519"
 CONTROL_SOCKET="/tmp/mobboss-prod-ssh-control"
 DEPLOYED_COMMIT=""
@@ -15,7 +16,7 @@ FINAL_LOCAL_AUTH_RESULT=""
 FINAL_PUBLIC_HTTP_RESULT=""
 
 show_success() {
-  "${OSA_BIN}" - "$1" <<'APPLESCRIPT'
+  "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
 on run argv
   display dialog (item 1 of argv) buttons {"OK"} default button "OK"
 end run
@@ -23,7 +24,7 @@ APPLESCRIPT
 }
 
 show_error() {
-  "${OSA_BIN}" - "$1" <<'APPLESCRIPT'
+  "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
 on run argv
   display dialog (item 1 of argv) buttons {"OK"} default button "OK" with icon stop
 end run
@@ -70,6 +71,10 @@ if [[ ! -f "${REPO_DIR}/documentation/deployment/README.md" ]]; then
   exit 1
 fi
 
+if [[ -f "${HOME}/.ssh/config" ]] && grep -q "^Host mobboss-prod$" "${HOME}/.ssh/config" 2>/dev/null; then
+  TARGET_HOST="mobboss-prod"
+fi
+
 log_section "Deployment Runbook"
 sed -n '1,240p' "${REPO_DIR}/documentation/deployment/README.md"
 
@@ -103,6 +108,7 @@ run_remote() {
   echo "\$ ${cmd}"
   output="$("${SSH_BIN}" "${SSH_ARGS[@]}" "${TARGET_HOST}" "${cmd}" 2>&1)"
   local exit_code=$?
+  output="$(printf '%s\n' "${output}" | sed '/^Shared connection to .* closed\.$/d')"
   printf '%s\n' "${output}"
   if [[ ${exit_code} -ne 0 ]]; then
     if [[ "${output}" == *"Could not resolve host: github.com"* ]]; then
@@ -123,6 +129,7 @@ run_remote_allow_fail() {
   echo "\$ ${cmd}"
   output="$("${SSH_BIN}" "${SSH_ARGS[@]}" "${TARGET_HOST}" "${cmd}" 2>&1)"
   local exit_code=$?
+  output="$(printf '%s\n' "${output}" | sed '/^Shared connection to .* closed\.$/d')"
   printf '%s\n' "${output}"
   REPLY="${output}"
   return ${exit_code}

@@ -7,7 +7,7 @@ OSA_BIN="/usr/bin/osascript"
 DEPLOY_SCRIPT="${REPO_DIR}/Quick Actions/Update Production Server.command"
 
 show_success() {
-  "${OSA_BIN}" - "$1" <<'APPLESCRIPT'
+  "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
 on run argv
   display dialog (item 1 of argv) buttons {"OK"} default button "OK"
 end run
@@ -22,7 +22,7 @@ APPLESCRIPT
 }
 
 show_error() {
-  "${OSA_BIN}" - "$1" <<'APPLESCRIPT'
+  "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
 on run argv
   display dialog (item 1 of argv) buttons {"OK"} default button "OK" with icon stop
 end run
