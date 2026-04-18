@@ -12,5 +12,6 @@ Notes:
 
 - `.command` files open in Terminal when double-clicked.
 - `Commit and Push.app` is a clickable Finder app icon that auto-generates a simple timestamp commit message and pushes the current branch.
+- After a successful push, you can choose `Update Server` to run the production deployment script.
 - `Commit and Push.command` stages all repo changes with `git add -A`.
 - The push target is the current Git branch.
