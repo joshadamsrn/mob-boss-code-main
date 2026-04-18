@@ -51,6 +51,13 @@ fail_deploy() {
   exit 1
 }
 
+diagnose_remote_dns() {
+  log_section "Remote DNS Diagnostics"
+  run_remote_allow_fail "cat /etc/resolv.conf"
+  run_remote_allow_fail "getent hosts github.com"
+  run_remote_allow_fail "getent hosts deb.debian.org"
+}
+
 cleanup_ssh_master() {
   "${SSH_BIN}" -O exit -o ControlPath="${CONTROL_SOCKET}" "${TARGET_HOST}" >/dev/null 2>&1 || true
   rm -f "${CONTROL_SOCKET}" >/dev/null 2>&1 || true
@@ -98,6 +105,9 @@ run_remote() {
   local exit_code=$?
   printf '%s\n' "${output}"
   if [[ ${exit_code} -ne 0 ]]; then
+    if [[ "${output}" == *"Could not resolve host: github.com"* ]]; then
+      diagnose_remote_dns
+    fi
     fail_deploy "Command failed: ${cmd}
 
 ${output}"
