@@ -9,6 +9,7 @@ RAW_TARGET_HOST="root@134.199.226.15"
 TARGET_HOST="${RAW_TARGET_HOST}"
 SSH_KEY="${HOME}/.ssh/id_ed25519"
 CONTROL_SOCKET="/tmp/mobboss-prod-ssh-control"
+DEPLOY_BRANCH="${1:-main}"
 DEPLOYED_COMMIT=""
 MOBBOSS_RECOVERY_NEEDED="No"
 FINAL_SYSTEMCTL_STATUS=""
@@ -39,6 +40,7 @@ log_section() {
 print_summary() {
   echo
   echo "Deployment summary:"
+  echo "Deployed branch: ${DEPLOY_BRANCH}"
   echo "Deployed commit: ${DEPLOYED_COMMIT:-unknown}"
   echo "mobboss needed recovery: ${MOBBOSS_RECOVERY_NEEDED}"
   echo "Final systemctl status: ${FINAL_SYSTEMCTL_STATUS:-unknown}"
@@ -68,6 +70,11 @@ trap cleanup_ssh_master EXIT
 
 if [[ ! -f "${REPO_DIR}/documentation/deployment/README.md" ]]; then
   show_error "Error: Missing documentation/deployment/README.md"
+  exit 1
+fi
+
+if [[ ! "${DEPLOY_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  show_error "Error: Invalid branch name '${DEPLOY_BRANCH}'."
   exit 1
 fi
 
@@ -209,8 +216,17 @@ recover_mobboss() {
 
 log_section "Deployment"
 
-run_remote "cd /root/mob-boss-code-main && git pull --ff-only origin main"
+run_remote "cd /root/mob-boss-code-main && git fetch origin ${DEPLOY_BRANCH}"
+run_remote_allow_fail "cd /root/mob-boss-code-main && git rev-parse --verify ${DEPLOY_BRANCH}"
+if [[ $? -eq 0 ]]; then
+  run_remote "cd /root/mob-boss-code-main && git checkout ${DEPLOY_BRANCH}"
+else
+  run_remote "cd /root/mob-boss-code-main && git checkout -b ${DEPLOY_BRANCH} --track origin/${DEPLOY_BRANCH}"
+fi
+run_remote "cd /root/mob-boss-code-main && git pull --ff-only origin ${DEPLOY_BRANCH}"
 extract_commit_hash "${REPLY}"
+run_remote "cd /root/mob-boss-code-main && git rev-parse HEAD"
+DEPLOYED_COMMIT="$(printf '%s\n' "${REPLY}" | tail -n 1)"
 
 run_remote "cd /root/mob-boss-code-main && npm run build"
 run_remote "cd /root/mob-boss-code-main && /root/mob-boss-code-main/venv/bin/python3 project/mobboss_apps/manage.py collectstatic --noinput"

@@ -72,6 +72,8 @@ echo "Commit message: ${commit_message}"
 echo
 
 git add -A
+# Keep generated local scratch files out of production commits.
+git restore --staged -- "tmp/" >/dev/null 2>&1 || true
 
 if git diff --cached --quiet; then
   echo
@@ -109,7 +111,7 @@ if [[ "${post_push_action}" == "Update Server" ]]; then
     show_error "Error: Missing Update Production Server.command"
     exit 1
   fi
-  "${DEPLOY_SCRIPT}"
+  "${DEPLOY_SCRIPT}" "${branch_name}"
   exit $?
 fi
 
