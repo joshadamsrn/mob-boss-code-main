@@ -15,6 +15,7 @@ MOBBOSS_RECOVERY_NEEDED="No"
 FINAL_SYSTEMCTL_STATUS=""
 FINAL_LOCAL_AUTH_RESULT=""
 FINAL_PUBLIC_HTTP_RESULT=""
+LOCAL_HEALTHCHECK_HOST="mobboss.duckdns.org"
 
 show_success() {
   "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
@@ -167,7 +168,7 @@ check_mobboss_health() {
   local port_status=$?
   local port_output="${REPLY}"
 
-  run_remote "cd /root/mob-boss-code-main && curl -I --max-time 5 http://127.0.0.1:8000/auth/"
+  run_remote "cd /root/mob-boss-code-main && curl -I --max-time 5 -H 'Host: ${LOCAL_HEALTHCHECK_HOST}' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/auth/"
   local curl_output="${REPLY}"
   FINAL_LOCAL_AUTH_RESULT="$(printf '%s\n' "${curl_output}" | grep -m1 '^HTTP/' || true)"
 

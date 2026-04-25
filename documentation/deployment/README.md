@@ -29,17 +29,17 @@ Do not assume the restart succeeded. Run these checks in order:
 
 1. `systemctl status mobboss --no-pager -l`
 2. `ss -ltnp | grep 8000`
-3. `curl -I --max-time 5 http://127.0.0.1:8000/auth/`
+3. `curl -I --max-time 5 -H 'Host: mobboss.duckdns.org' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/auth/`
 
 Success criteria:
 
 - `systemctl status` shows `active (running)`, not `deactivating`
 - gunicorn is listening on `127.0.0.1:8000`
-- local `/auth/` returns `HTTP/1.1 200 OK`
+- local proxied `/auth/` returns `HTTP/1.1 200 OK`
 
 Important:
 
-- The real readiness gate is `curl -I --max-time 5 http://127.0.0.1:8000/auth/`.
+- The real readiness gate is `curl -I --max-time 5 -H 'Host: mobboss.duckdns.org' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/auth/`.
 - `active (running)` plus a listening socket is not sufficient by itself.
 
 ## Recovery Flow If `mobboss` Fails Health Checks
