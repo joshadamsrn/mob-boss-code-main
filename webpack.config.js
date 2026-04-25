@@ -15,6 +15,8 @@ module.exports = (_env, argv) => {
     output: {
       filename: isProd ? "[name]-[contenthash].js" : "[name].js",
       path: path.resolve(__dirname, "project/mobboss_apps/static/dist"),
+      // Keep emitted asset URLs stable in production regardless of the serving host.
+      publicPath: "/static/dist/",
       clean: true,
     },
     module: {
