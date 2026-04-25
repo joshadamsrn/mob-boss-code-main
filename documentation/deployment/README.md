@@ -88,3 +88,36 @@ Always summarize:
 - final `systemctl status`
 - final local `/auth/` result
 - final public HTTP result
+
+## HTTPS Hardening
+
+The current server can only become browser-trusted HTTPS if a real domain points to the droplet. A raw public IP is not sufficient for normal Let's Encrypt issuance.
+
+Required DNS state:
+
+1. Choose a domain such as `play.example.com`
+2. Point an `A` record for that host to `134.199.226.15`
+3. Wait for DNS propagation before running certificate setup
+
+Required Django environment for HTTPS:
+
+- `DJANGO_ALLOWED_HOSTS=play.example.com`
+- `DJANGO_CSRF_TRUSTED_ORIGINS=https://play.example.com`
+- `DJANGO_HTTPS_ENABLED=1`
+- `DJANGO_SECURE_HSTS_SECONDS=31536000`
+
+Required nginx outcome:
+
+- listen on `443 ssl http2`
+- redirect `http://` to `https://`
+- forward `X-Forwarded-Proto https` to gunicorn
+- serve the Let's Encrypt certificate for the chosen host
+
+Recommended verification after HTTPS is enabled:
+
+1. `curl -I http://play.example.com/`
+   - Expected: `301` or `308` redirect to `https://play.example.com/`
+2. `curl -I https://play.example.com/`
+   - Expected: successful HTTPS response with a valid certificate chain
+3. `curl -I https://play.example.com/auth/`
+   - Expected: secure response and secure cookie behavior from Django

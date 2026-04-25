@@ -1,10 +1,16 @@
 from pathlib import Path
 import os
 
+
+def _split_csv_env(name: str, default: str = "") -> list[str]:
+    raw_value = os.getenv(name, default)
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = _split_csv_env("DJANGO_ALLOWED_HOSTS", "*" if DEBUG else "localhost,127.0.0.1")
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").lower()
 
 INSTALLED_APPS = [
@@ -100,6 +106,19 @@ WEBPACK_LOADER = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+USE_X_FORWARDED_HOST = os.getenv("DJANGO_USE_X_FORWARDED_HOST", "1") == "1"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+CSRF_TRUSTED_ORIGINS = _split_csv_env("DJANGO_CSRF_TRUSTED_ORIGINS")
+
+HTTPS_ENABLED = os.getenv("DJANGO_HTTPS_ENABLED", "0") == "1"
+SECURE_SSL_REDIRECT = HTTPS_ENABLED
+SESSION_COOKIE_SECURE = HTTPS_ENABLED
+CSRF_COOKIE_SECURE = HTTPS_ENABLED
+SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0" if not HTTPS_ENABLED else "31536000"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "1") == "1"
+SECURE_HSTS_PRELOAD = os.getenv("DJANGO_SECURE_HSTS_PRELOAD", "1") == "1"
+SECURE_REFERRER_POLICY = os.getenv("DJANGO_SECURE_REFERRER_POLICY", "same-origin")
 
 # Room dev/testing controls.
 ROOM_DEV_MODE = os.getenv("ROOM_DEV_MODE", "0") == "1"
