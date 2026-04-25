@@ -16,6 +16,8 @@ FINAL_SYSTEMCTL_STATUS=""
 FINAL_LOCAL_AUTH_RESULT=""
 FINAL_PUBLIC_HTTP_RESULT=""
 LOCAL_HEALTHCHECK_HOST="mobboss.duckdns.org"
+PUBLIC_HEALTHCHECK_HTTP_URL="http://mobboss.duckdns.org/"
+PUBLIC_HEALTHCHECK_HTTPS_URL="https://mobboss.duckdns.org/"
 
 show_success() {
   "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
@@ -247,11 +249,18 @@ fi
 log_section "nginx And Public Health"
 run_remote "cd /root/mob-boss-code-main && systemctl restart nginx"
 run_remote "cd /root/mob-boss-code-main && nginx -t"
-run_remote "cd /root/mob-boss-code-main && curl -I --max-time 5 http://134.199.226.15/"
-FINAL_PUBLIC_HTTP_RESULT="$(printf '%s\n' "${REPLY}" | grep -m1 '^HTTP/' || true)"
+run_remote "cd /root/mob-boss-code-main && curl -I --max-time 5 ${PUBLIC_HEALTHCHECK_HTTP_URL}"
+local_public_http_result="$(printf '%s\n' "${REPLY}" | grep -m1 '^HTTP/' || true)"
+run_remote "cd /root/mob-boss-code-main && curl -I --max-time 5 ${PUBLIC_HEALTHCHECK_HTTPS_URL}"
+local_public_https_result="$(printf '%s\n' "${REPLY}" | grep -m1 '^HTTP/' || true)"
+FINAL_PUBLIC_HTTP_RESULT="${local_public_http_result} | ${local_public_https_result}"
 
-if [[ "${FINAL_PUBLIC_HTTP_RESULT}" != "HTTP/1.1 302 Found" ]]; then
-  fail_deploy "Public health check did not return HTTP/1.1 302 Found."
+if [[ "${local_public_http_result}" != "HTTP/1.1 301 Moved Permanently" ]]; then
+  fail_deploy "Public HTTP health check did not return HTTP/1.1 301 Moved Permanently."
+fi
+
+if [[ "${local_public_https_result}" != "HTTP/1.1 302 Found" ]]; then
+  fail_deploy "Public HTTPS health check did not return HTTP/1.1 302 Found."
 fi
 
 if [[ -z "${DEPLOYED_COMMIT}" ]]; then

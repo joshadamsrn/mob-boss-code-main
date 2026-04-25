@@ -71,13 +71,14 @@ Only after `mobboss` passes all local health checks:
 
 7. `systemctl restart nginx`
 8. `nginx -t`
-9. `curl -I --max-time 5 http://134.199.226.15/`
+9. `curl -I --max-time 5 http://mobboss.duckdns.org/`
+10. `curl -I --max-time 5 https://mobboss.duckdns.org/`
 
 Success criteria:
 
 - `nginx -t` succeeds
-- the public curl does not hang
-- expected public result is `HTTP/1.1 302 Found` redirecting to `/auth/?next=/`
+- public HTTP returns `HTTP/1.1 301 Moved Permanently` to `https://mobboss.duckdns.org/`
+- public HTTPS returns `HTTP/1.1 302 Found` redirecting to `/auth/?next=/`
 
 ## What To Report After Deployment
 
@@ -87,7 +88,7 @@ Always summarize:
 - whether `mobboss` needed recovery
 - final `systemctl status`
 - final local `/auth/` result
-- final public HTTP result
+- final public HTTP + HTTPS results
 
 ## HTTPS Hardening
 
