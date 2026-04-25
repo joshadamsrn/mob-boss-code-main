@@ -78,6 +78,11 @@ if [[ ! "${DEPLOY_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   exit 1
 fi
 
+if [[ "${DEPLOY_BRANCH}" != "main" ]]; then
+  show_error "Error: Production deployment is only allowed from the main branch."
+  exit 1
+fi
+
 if [[ -f "${HOME}/.ssh/config" ]] && grep -q "^Host mobboss-prod$" "${HOME}/.ssh/config" 2>/dev/null; then
   TARGET_HOST="mobboss-prod"
 fi

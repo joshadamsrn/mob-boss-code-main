@@ -29,6 +29,14 @@ end run
 APPLESCRIPT
 }
 
+show_warning() {
+  "${OSA_BIN}" - "$1" >/dev/null <<'APPLESCRIPT'
+on run argv
+  display dialog (item 1 of argv) buttons {"OK"} default button "OK" with icon caution
+end run
+APPLESCRIPT
+}
+
 cd "${REPO_DIR}" || exit 1
 
 clear
@@ -107,6 +115,11 @@ echo
 echo "Push completed."
 post_push_action="$(ask_post_push_action)"
 if [[ "${post_push_action}" == "Update Server" ]]; then
+  if [[ "${branch_name}" != "main" ]]; then
+    echo "Production deploy blocked: current branch is '${branch_name}', not 'main'."
+    show_warning "Production deploy is only allowed from the main branch. Your changes were pushed to ${branch_name}, but DigitalOcean was not updated."
+    exit 0
+  fi
   if [[ ! -f "${DEPLOY_SCRIPT}" ]]; then
     show_error "Error: Missing Update Production Server.command"
     exit 1
